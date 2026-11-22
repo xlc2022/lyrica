@@ -4,7 +4,7 @@
 // photo setting. The image and the names are never logged; the call is recorded like any other (task, model).
 import { posix } from "node:path";
 import { WORKDIR, type CallContext, type Models, type Pool, type Workspace } from "@lyrica/core";
-import { modelRuntimeFor, piModelFor, timedReply } from "@lyrica/extension";
+import { modelRuntimeFor, photosToCloud, piModelFor, timedReply } from "@lyrica/extension";
 import type { AutoName } from "./api.ts";
 
 /**
@@ -78,7 +78,6 @@ export function freeName(stem: string, ext: string, taken: Set<string>): string 
   }
 }
 
-const dayOf = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 
 /**
  * A suggested name for each image or clip, nothing renamed: the panel shows them and the user applies them with Rename.
@@ -93,7 +92,7 @@ export async function autoNames(models: Models, workspace: Workspace, t: { userI
   const images = workspace.imageFiles(t);
   const settings = workspace.settings(t.userId);
   const base = models.callContext(t.userId, t.pool, t.threadId);
-  const cloudPhotos = () => { const p = settings.photoCloudPolicy(); return p === "always" || (p === "ask" && settings.photoCloudApproved(dayOf(now))); };
+  const cloudPhotos = () => photosToCloud(settings, now);
   // Each folder's names, read once, so a suggestion never takes a name that is there.
   // The promise is kept, so images named at once share one read of their folder.
   const taken = new Map<string, Promise<Set<string>>>();

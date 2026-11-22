@@ -32,6 +32,8 @@ export interface ThreadSessionOptions {
    * Read aloud model takes a tone; docs/briefs/voice-tone.md). Without it replies stream as written.
    */
   tones?: () => boolean;
+  /** Whether a photo of the user in a tool result may go to a cloud model now (photosToCloud). Without it, none does. */
+  photos?: () => boolean;
 }
 
 /**
@@ -54,7 +56,7 @@ export interface ThreadSession {
 
 export async function openThreadSession(o: ThreadSessionOptions): Promise<ThreadSession> {
   const { thread } = o;
-  const runtime = await modelRuntimeFor(o.models, thread.call, { ...(o.onGpuWait ? { onGpuWait: o.onGpuWait } : {}), ...(o.onLiveCall ? { live: true } : {}) });
+  const runtime = await modelRuntimeFor(o.models, thread.call, { ...(o.onGpuWait ? { onGpuWait: o.onGpuWait } : {}), ...(o.onLiveCall ? { live: true } : {}), ...(o.photos ? { photos: o.photos } : {}) });
   // Any model will do to open with, even one whose machine is down: each turn picks again (prepare).
   const task = o.task?.() ?? "chat";
   const { ref: chat, model } = piModelFor(runtime, o.models, task, thread.call, o.models.resolve(task, thread.call, {}, { evenIfDown: true }));

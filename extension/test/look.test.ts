@@ -2,7 +2,21 @@
 // vision model, which gets only the images and the question, and the privacy rules for photos of the user hold.
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { CloudModelForbidden, NoModel } from "@lyrica/core";
+import { crc32, deflateSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
+
+/** A plain grey PNG of the given size, made here. */
+function png(width: number, height: number): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const head = Buffer.alloc(8); head.writeUInt32BE(data.length); head.write(type, 4);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), data])));
+    return Buffer.concat([head, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(width); ihdr.writeUInt32BE(height, 4); ihdr[8] = 8; ihdr[9] = 0;
+  const rows = Buffer.alloc((width + 1) * height, 0x80);
+  for (let y = 0; y < height; y++) rows[y * (width + 1)] = 0;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
+}
 
 let sent: { systemPrompt: string; messages: { content: { type: string; text?: string; data?: string }[] }[] } | undefined;
 vi.mock("../src/models.ts", async (original) => ({
@@ -14,7 +28,7 @@ vi.mock("../src/context.ts", async (original) => ({
   ...(await original<object>()),
   timedReply: async () => ({ reply: { stopReason: "stop", content: [{ type: "text", text: "A red bicycle by a canal." }] } }),
 }));
-const { createLookExtension, imageTokens, registerVisionGuard, MAX_IMAGE_TOKENS, NO_VISION, USE_LOOK } = await import("../src/index.ts");
+const { createLookExtension, fitImage, imageSize, imageTokens, registerVisionGuard, MAX_IMAGE_TOKENS, NO_VISION, USE_LOOK } = await import("../src/index.ts");
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 function setup(o: { cloud?: boolean; localOnly?: boolean; portrait?: boolean; policy?: "never" | "ask" | "always"; allow?: boolean; window?: number } = {}) {
@@ -95,6 +109,13 @@ describe("the look tool", () => {
     expect(r.details.images).toBe(1);
     expect(sent!.messages[0]!.content.find((c) => c.type === "image")!.data).toBe("c2hvdA==");
     expect(s.asked).toEqual([]);
+  });
+
+  it("sends an image larger than 2,000 pixels shrunk, as Pi's read does, and a small one as it is", async () => {
+    const big = await fitImage(png(3000, 1500), "image/png", "big.png");
+    expect(imageSize(Buffer.from(big.data, "base64"))).toEqual({ width: 2000, height: 1000 });
+    const small = png(64, 64);
+    expect((await fitImage(small, "image/png", "small.png")).data).toBe(small.toString("base64"));
   });
 
   it("passes over a vision model whose context window can't hold the images, and says so before any call", async () => {

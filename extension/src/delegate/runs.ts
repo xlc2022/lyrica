@@ -17,6 +17,7 @@ import { createWebExtension, type WebTools } from "../web.ts";
 import { checkoutsOf, repoRules } from "../code-repositories.ts";
 import { createImageExtension } from "../images.ts";
 import { createLookExtension } from "../look.ts";
+import { photosToCloud } from "../photos.ts";
 import { createSyntaxExtension } from "../syntax.ts";
 import { createWorkspaceExtension, type Approval, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
@@ -1229,7 +1230,8 @@ export class Delegation {
       const allowed = new Set([...role.tools, "ask_parent", "look", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
       // First: it must run before the MCP extension registers anything, else the role gate turns loaded MCP tools off.
       extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined, rules, parentMachines));
-      const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions, task: () => role.name === "coder" ? "code" : "chat" });
+      const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions, task: () => role.name === "coder" ? "code" : "chat",
+        ...(workspace ? { photos: () => photosToCloud(workspace.settings(parent.user.id)) } : {}) });
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.
       const chat = await opened.prepare({ thinking: false }).catch((err) => { opened.dispose(); throw err; });

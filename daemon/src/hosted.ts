@@ -6,7 +6,7 @@ import {
   sandboxHas, sandboxTools, createTask, type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, createSyntaxExtension, codeTaskText, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLookExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, type WebTools, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
+  BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, createSyntaxExtension, codeTaskText, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLookExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, type WebTools, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, photosToCloud, type ClipMade, piModelFor, syncEntries, timedReply,
   GO_AHEAD, grantKey, MODE_LABELS, type Approval, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
   type ToneNote, type Tones,
 } from "@lyrica/extension";
@@ -1422,6 +1422,8 @@ export class HostedThread {
       const { session, runtime, prepare, dispose, tones: toneNotes } = await openThreadSession({
         ...(own ? { tones } : {}),
         thread: ctx, models, cwd: this.o.cwd, task: () => tools.settings().code ? "code" : "chat",
+        // A photo of the user in a tool result goes to a cloud chat model only under their photo setting.
+        photos: () => photosToCloud(workspace.settings(this.userId)),
         // A reply waiting for a host's GPU (up to 15 minutes, then the next model) has the views say what it waits for.
         onGpuWait: (wait) => { this.gpuWait = wait; this.emit({ type: "gpu_wait", wait }); },
         // The request it waits on, as counts and times, in place of the dots until her words start.

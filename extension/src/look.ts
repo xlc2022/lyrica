@@ -5,7 +5,7 @@
 // thread's own CallContext, so a private or local-only thread's look stays local, and a photo of the user reaches a
 // cloud model only under the user's photo setting, asked as the image tool asks.
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { resizeImage, type ExtensionAPI, type ExtensionContext, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { CloudModelForbidden, isRestricted, MAX_FRAMES, NoModel, type CallContext, type Models, type ThreadImages, type WorkspaceSettings } from "@lyrica/core";
 import { Type } from "typebox";
 import { timedReply } from "./context.ts";
@@ -67,6 +67,22 @@ export function imageTokens(bytes: Uint8Array): number {
   const size = imageSize(bytes);
   return size ? Math.min(MAX_IMAGE_TOKENS, Math.max(64, Math.ceil(size.width * size.height / 1024))) : MAX_IMAGE_TOKENS;
 }
+/**
+ * An image as look sends it: within 2,000 x 2,000 pixels and 4.5 MB of base64, as Pi's `read` sends one (Pi's
+ * resizeImage defaults), so eight originals of up to 20 MB each fit under the model host's 64 MiB and a cloud
+ * model's per-image limit. A vision model sees no more detail than that anyway (MAX_IMAGE_TOKENS).
+ */
+/** Pi's resizeImage's most base64 bytes for one image (pi-coding-agent utils/image-resize-core.js). */
+const LOOK_IMAGE_BYTES = 4.5 * 1024 * 1024;
+export async function fitImage(bytes: Uint8Array, mimeType: string, name: string): Promise<{ data: string; mimeType: string }> {
+  const r = await resizeImage(bytes, mimeType);
+  if (r) return { data: r.data, mimeType: r.mimeType };
+  // One it can't decode goes as it is while it is small enough; the vision model may still read it.
+  const data = Buffer.from(bytes).toString("base64");
+  if (data.length > LOOK_IMAGE_BYTES) throw new Error(`${name} couldn't be made small enough to send.`);
+  return { data, mimeType };
+}
+
 /** A clip's stills when she gives no number. */
 export const DEFAULT_FRAMES = 8;
 const VIDEO = /\.(mp4|webm|mov|mkv|m4v|avi)$/i;
@@ -126,7 +142,10 @@ export function createLookExtension(o: LookTools): ExtensionFactory {
         if (p.recent && recent) {
           portrait = recent.portrait;
           content.push({ type: "text", text: "From the latest tool result:" });
-          for (const image of recent.images) { content.push({ type: "image", ...image }); images++; tokens += imageTokens(Buffer.from(image.data, "base64")); }
+          for (const image of recent.images) {
+            const fit = await fitImage(Buffer.from(image.data, "base64"), image.mimeType, "An image of the latest tool result");
+            content.push({ type: "image", ...fit }); images++; tokens += imageTokens(Buffer.from(fit.data, "base64"));
+          }
         }
         for (const path of paths) {
           if (VIDEO.test(path)) {
@@ -136,14 +155,16 @@ export function createLookExtension(o: LookTools): ExtensionFactory {
             portrait = true;
             content.push({ type: "text", text: `Video ${path}, ${stills.length} still${stills.length > 1 ? "s" : ""}:` });
             for (const s of stills) {
-              content.push({ type: "text", text: `At ${s.at} s:` }, { type: "image", data: s.bytes.toString("base64"), mimeType: s.type });
-              images++; tokens += imageTokens(s.bytes);
+              const fit = await fitImage(s.bytes, s.type, `A still of ${path}`);
+              content.push({ type: "text", text: `At ${s.at} s:` }, { type: "image", ...fit });
+              images++; tokens += imageTokens(Buffer.from(fit.data, "base64"));
             }
           } else {
             const read = await o.files.read(path);
             portrait ||= read.portrait;
-            content.push({ type: "text", text: `Image ${path}:` }, { type: "image", data: Buffer.from(read.input.bytes).toString("base64"), mimeType: read.input.type });
-            images++; tokens += imageTokens(read.input.bytes);
+            const fit = await fitImage(read.input.bytes, read.input.type, path);
+            content.push({ type: "text", text: `Image ${path}:` }, { type: "image", ...fit });
+            images++; tokens += imageTokens(Buffer.from(fit.data, "base64"));
           }
         }
         for (const c of content) if (c.type === "text") tokens += Math.ceil(c.text.length / 4);

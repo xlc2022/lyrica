@@ -5,6 +5,7 @@ import { CloudModelForbidden, HostRefused, ratioSize, isRestricted, NoModel, lor
 import { Type, type Static } from "typebox";
 import { StringEnum } from "./string-enum.ts";
 import type { Approval, ApprovalRequest } from "./workspace.ts";
+import { dayOf, markPhoto } from "./photos.ts";
 
 /** `picked`: her pick among attempts made earlier, shown again last; its model is the earlier part's, so empty here. */
 export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality"; picked?: true }
@@ -173,7 +174,6 @@ function needs(p: ImageArgs): void {
 /** A cloud model's size for an aspect ratio (core/models); a host keeps its recipe's area instead. */
 export { ratioSize } from "@lyrica/core";
 
-const dayOf = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 // One pending question per user, even across simultaneous threads in the same process.
 const pending = new WeakMap<WorkspaceSettings, Promise<boolean>>();
 
@@ -222,6 +222,14 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
     // Attempts rejected this turn, each once: past a few, retrying is less use than asking (ASK_INSTEAD).
     const rejects = new Set<string>();
     pi.on("agent_start", () => { refused = false; rejects.clear(); });
+    // Pi's read of an image of the user (a result she made from their photo, a copy of one) is marked as their photo,
+    // so a cloud chat model gets it only under their photo setting (photos.ts).
+    pi.on("tool_result", async (event) => {
+      if (event.toolName !== "read" || !event.content.some(c => c.type === "image")) return;
+      const path = (event.input as { path?: unknown }).path;
+      if (typeof path === "string" && !await o.files.isPortrait(path)) return;
+      return { details: markPhoto(event.details) };
+    });
     pi.registerTool({
       name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good. Video makes a clip from a prompt, animate one from an image, motion one of an image's subject moving as the person in a clip moves, edit_video changes a clip as an instruction says, extend makes a clip longer, and upscale_video makes a clip sharper and larger; clips go to videos/ (shared/videos/), are made in the background, and you are told here when one is ready.",
       promptSnippet: "create, edit or upscale images, and make and upscale short clips",
@@ -418,7 +426,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   const passed = out.resolution.passedOver ?? [];
   const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
   return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}${samplingUsed(p, out.unused)}.${unusedSaid(out.unused)}${seedsOf(out.images.map(i => i.seed))}${lorasUsed(out.loras, asks, out.resolution)}${fellBack} Saved ${paths.join(", ")}.` },
-    ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
+    ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: portrait ? markPhoto({ image: part }) : { image: part } };
 }
 
 /**
@@ -464,7 +472,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   }
   const { text, video, poster } = await make(signal, onProgress);
   return { content: [{ type: "text" as const, text: `${text} Its first frame:` },
-    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: { video } };
+    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: markPhoto({ video }) };
 }
 
 /**
@@ -504,5 +512,5 @@ async function executeUpscaleVideo(o: ImageTools, id: string, p: ImageArgs, sign
   }
   const { text, video, poster } = await make(signal, onProgress);
   return { content: [{ type: "text" as const, text: `${text} Its first frame:` },
-    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: { video } };
+    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: markPhoto({ video }) };
 }
