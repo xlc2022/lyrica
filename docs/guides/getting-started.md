@@ -40,6 +40,8 @@ Ubuntu VM or LXC container), running:
   Direct).
 - Her own `tailscaled` (`lyrica-tailscaled.service`), as the `lyrica` user
   in userspace networking, so she can be a device of her own on a tailnet.
+  It runs with `--no-logs-no-support`: it sends Tailscale no client logs,
+  so Tailscale support can't read them for this device.
   It also gives her a proxy on `127.0.0.1:1056` to reach model hosts and
   other machines on that tailnet. Updates never replace units, so an
   install made before the proxy was added gets it by running `install.sh`
@@ -1384,6 +1386,11 @@ refused. To replace the destination, enter the full URL and token again;
     for PDFs. About 380 MiB in all. Also `fonts-noto-cjk` (about 90 MiB),
     so what she renders shows Chinese, Japanese and Korean; until then
     those come out as boxes.
+  - **Before 2026-11-22:** her `tailscaled` unit gains
+    `--no-logs-no-support`, so her device sends Tailscale no client logs
+    (and Tailscale support can't read them). The run rewrites the unit but
+    doesn't restart it: run `systemctl restart lyrica-tailscaled`
+    afterwards, or reboot.
   - **Any install missing them:** headless Chromium and IBM Plex for her
     screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
     she can't check a clip's length or streams), and the Python baseline
