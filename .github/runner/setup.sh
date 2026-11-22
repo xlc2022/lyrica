@@ -5,8 +5,8 @@
 # Run it as root on a fresh Ubuntu 24.04 VM that holds nothing else. It also
 # sets a firewall in the VM that lets it reach the internet but nothing on the
 # LAN or the tailnet (see docs/ci.md):
-#   sudo bash setup.sh TOKEN
-# TOKEN is the one shown on
+#   sudo bash setup.sh
+# It asks for the registration token shown on
 # https://github.com/xlc2022/lyrica/settings/actions/runners/new (valid for an
 # hour). Running it again is safe: a configured runner keeps its registration.
 set -euo pipefail
@@ -16,7 +16,9 @@ RUNNER_USER=runner
 DIR=/home/$RUNNER_USER/actions-runner
 
 fail() { printf 'setup.sh: %s\n' "$*" >&2; exit 1; }
-[[ $(id -u) == 0 ]] || fail "run it as root (sudo bash setup.sh TOKEN)."
+[[ $(id -u) == 0 ]] || fail "run it as root (sudo bash setup.sh)."
+# The token is typed, never an argument: ps would show it to every user.
+[[ $# == 0 ]] || fail "it takes no arguments; it asks for the token."
 . /etc/os-release
 [[ $ID == ubuntu ]] || echo "Warning: CI expects Ubuntu 24.04, like GitHub's ubuntu-latest; this is $PRETTY_NAME."
 case $(uname -m) in
@@ -69,11 +71,14 @@ echo "Installing the runner's dependencies..."
 
 if [[ ! -f .runner ]]; then
   echo "Registering the runner with GitHub..."
-  TOKEN=${1:-}
-  [[ -n $TOKEN ]] || { read -r -s -p "Registration token: " TOKEN; echo; }
-  sudo -u "$RUNNER_USER" ./config.sh --unattended --replace \
-    --url "https://github.com/$REPO" --token "$TOKEN" \
+  read -r -s -p "Registration token: " TOKEN; echo
+  [[ -n $TOKEN ]] || fail "no token."
+  # config.sh reads an argument it isn't given from ACTIONS_RUNNER_INPUT_<NAME>
+  # and clears it from its environment; runuser keeps the environment.
+  ACTIONS_RUNNER_INPUT_TOKEN=$TOKEN runuser -u "$RUNNER_USER" -- ./config.sh --unattended --replace \
+    --url "https://github.com/$REPO" \
     --name "$(hostname -s)" --labels "$LABEL"
+  unset TOKEN
 fi
 [[ -f .service ]] || { echo "Installing the runner service..."; ./svc.sh install "$RUNNER_USER"; }
 

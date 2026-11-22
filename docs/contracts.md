@@ -3028,7 +3028,7 @@ settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and swi
 //   (read-only where any ancestor's is), machines and repositories every ancestor grants. Sandbox, Files panel, grantsFor and folders() use it.
 //   setThread on a parent writes the narrowing into its descendants' rows; checkInherited no longer refuses a dropped folder.
 allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
-  // NEVER_GRANTED (Caddy's runtime, the terminal clients' socket folder, /opt/lyrica, the updater's state and snapshots) and LYRICA_HOME are refused, and rows
+  // NEVER_GRANTED (Caddy's runtime, the terminal clients' socket folder, her tailscaled's state and socket, /opt/lyrica, the updater's state and snapshots) and LYRICA_HOME are refused, and rows
   //   overlapping them are left out of list()
 credentialsFor(t): Credentials            // the thread's reachable repositories' tokens and Claude Code's, for SandboxSpec.credentials, never the env (Git accounts below); targetFor
   // passes it as the sandbox's env, never argv, and `repos` (reposDir(t)) mounted at /workspace/repos
@@ -3300,7 +3300,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   renames and deletes.
 - **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
   and change only with an administrator actor. Paths overlapping
-  `NEVER_GRANTED` (`/run/lyrica-caddy`, `/run/lyrica-clients`, `/opt/lyrica`, `/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`) are refused, because sandboxes run with
+  `NEVER_GRANTED` (`/run/lyrica-caddy`, `/run/lyrica-clients`, `/var/lib/lyrica-tailscale`, `/run/lyrica-tailscale`, `/opt/lyrica`, `/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`) are refused, because sandboxes run with
   `lyricad`'s groups.
 - See [workspace.md](workspace.md).
 

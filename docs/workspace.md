@@ -881,8 +881,9 @@ fixed actions, the token never shown to her.
   - A listed folder must be a real directory, with no symlinks on its path,
     and must not overlap Lyrica's runtime directory (which holds the update
     requests), the releases (`/opt/lyrica`), the updater's state and
-    snapshots (`/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`) or
-    Caddy's runtime directory. A row that overlaps one of them, whenever it
+    snapshots (`/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`),
+    her tailscaled's state and socket (`/var/lib/lyrica-tailscale`,
+    `/run/lyrica-tailscale`) or Caddy's runtime directory. A row that overlaps one of them, whenever it
     was listed, doesn't count.
   - No folder may be in both lists, or overlap one in the other list.
   - A general thread can't take a folder that overlaps a private one.

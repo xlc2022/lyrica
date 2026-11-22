@@ -47,10 +47,11 @@ while no workflow uses the runners, remove them from the repository
    kept in the project's files):
 
    ```sh
-   sudo bash .github/runner/setup.sh TOKEN
+   sudo bash .github/runner/setup.sh
    ```
 
-   With no token on the command line it asks for one at a hidden prompt.
+   It asks for the token at a hidden prompt. It never takes the token as an
+   argument, where `ps` would show it.
 
 The script, in order:
 

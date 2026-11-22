@@ -207,7 +207,7 @@ describe("grants", () => {
 describe("never granted", () => {
   it("refuses releases, snapshots, the updater's state and update requests, whenever they were listed", async () => {
     const { keyring, ada, paths } = await setup();
-    for (const never of ["/opt/lyrica", "/opt/lyrica/releases/abc", "/var/lib/lyrica-snapshots", "/var/lib/lyrica-update", join(keyring.home, "updates")]) {
+    for (const never of ["/opt/lyrica", "/opt/lyrica/releases/abc", "/var/lib/lyrica-tailscale", "/run/lyrica-tailscale", "/var/lib/lyrica-snapshots", "/var/lib/lyrica-update", join(keyring.home, "updates")]) {
       expect(() => paths.allow(ada, ada.id, "general", never), never).toThrow(/never granted/);
     }
     // A row listed before a folder became never granted is dropped when read, so the check before each run refuses it.
