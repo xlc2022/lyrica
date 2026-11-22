@@ -1082,8 +1082,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the Output cell in place of zero tokens; a speech model's seconds of audio
   heard or spoken there instead, as s, min or h) and recorded fallbacks.
   Each head is a button that sorts the rows client-side (`sortedModels`): the
-  model by its name, the numbers by the figure each cell shows (an image or
-  speech model's images or seconds of audio included), a value the column
+  model by its name, the numbers by the figure each cell shows (Output grouped by
+  its unit, tokens then images or clips then seconds of audio, and sorted
+  within each), a value the column
   can't measure last either way and ties by name; the sort is card state
   (`aria-sort` on the sorted head, an arrow beside its word) and survives
   the live refreshes, going back to the served order on a page load. On a phone, or in a card under 600 px, the heads are hidden and their controls with

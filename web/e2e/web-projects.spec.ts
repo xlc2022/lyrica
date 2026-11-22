@@ -2070,7 +2070,8 @@ test("the file viewer: an image steps to the previous or next image of its list 
   await panel.getByRole("button", { name: "uploads", exact: true }).click();
   await panel.getByRole("button", { name: names[0], exact: true }).click();
   let viewer = page.getByRole("dialog", { name: names[0] });
-  await expect(viewer.locator(".viewer-facts")).toContainText("Image 1 of 2");
+  // The place stays beside the kind once the image's own pixels are read too.
+  await expect(viewer.locator(".viewer-facts")).toContainText("Image 1 of 2 · 2×2 PNG");
   await expect(viewer.getByRole("button", { name: "Previous image" })).toBeDisabled();
   if (phone(page)) expect(await hitHeight(viewer.getByRole("button", { name: "Next image" }))).toBeGreaterThanOrEqual(44);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/viewer-steps-${page.viewportSize()!.width}.png` });

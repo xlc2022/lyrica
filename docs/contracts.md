@@ -1118,9 +1118,9 @@ Custom roles override built-ins by name, except `claude`.
   action carries its consequence as a `title` tooltip and POSTs to that
   answer route with `{ option }`, recommended first, then the others in
   order; its `thread` supplies Open thread. A card with Run (a root step, or
-  a secret) is not answered from the row: it has one action instead, the
-  secret's name (`Notification.run?`, **Password** on a root step), which
-  loads the card in place from `GET …/threads/:pool/:id/question/card` and
+  a secret) is not answered from the row: it has one action instead, **Show card**
+  (its tooltip names the field from `Notification.run?`: the secret's name,
+  or Password on a root step), which loads the card in place from `GET …/threads/:pool/:id/question/card` and
   answers there — Run by the run route, Done and Not now by the answer
   route. There is no bulk question action.
   Display filters apply as to other decisions, including the private pool.

@@ -1235,7 +1235,7 @@ export interface Notification {
   type: NotificationType;
   title: string;
   detail?: string;
-  /** On a question whose Run needs what the person types: the label for opening the card in place ("Password", or the secret's name). The card itself is `GET …/threads/:pool/:threadId/question/card`. */
+  /** On a question whose Run needs what the person types: what the card asks for ("Password", or the secret's name), the tooltip of the row's Show card, which opens the card in place. The card itself is `GET …/threads/:pool/:threadId/question/card`. */
   run?: string;
   /** Where it is: a pool, for now. */
   scope: Pool;

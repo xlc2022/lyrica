@@ -144,7 +144,7 @@ describe("question cards", () => {
     vi.mocked(useLoad).mockImplementationOnce(() => loaded(page)).mockImplementationOnce(() => loaded(undefined));
     // The row offers the card, not an answer: Done and Not now wait on the card, where their consequences show.
     const rowHtml = renderToStaticMarkup(createElement(NotificationsCard, { ctx }));
-    expect(rowHtml).toMatch(/aria-expanded="false"[^>]*>Password</);
+    expect(rowHtml).toMatch(/aria-expanded="false" title="Asks for: Password"[^>]*>Show card</);
     expect(rowHtml).not.toContain('class="sm primary"');
     const html = renderToStaticMarkup(createElement(RowCard, { card: { name: "run_as_root", args: { machine: "box", why: "Restarts ssh." }, root, state }, base: "/thread", onChange: vi.fn() }));
     expect(html).toContain("Restarts ssh.");

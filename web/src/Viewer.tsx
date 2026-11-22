@@ -195,7 +195,7 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, settingsUrl, steps, he
     <section className="viewer-file" aria-label={shownPath}>
       <div className="viewer-head">
         {heading ?? <span className="fname mono" title={shownPath}>{shownPath}</span>}
-        <span className="viewer-facts muted">{kind ? KIND_WORD[kind] : "File"}{facts && <> · {facts}</>}{dims && <> · <span className="num">{dims}</span>{format && <> {format}</>}</>}{steps && <> <span className="num">{steps.at + 1}</span> of <span className="num">{steps.count}</span></>}{length && <> · <span className="num">{length}</span></>} · <span className="num">{size(file.size)}</span> · <span className="num" title={fullTime(file.modified)}>{shortTime(file.modified)}</span></span>
+        <span className="viewer-facts muted">{kind ? KIND_WORD[kind] : "File"}{steps && <> <span className="num">{steps.at + 1}</span> of <span className="num">{steps.count}</span></>}{facts && <> · {facts}</>}{dims && <> · <span className="num">{dims}</span>{format && <> {format}</>}</>}{length && <> · <span className="num">{length}</span></>} · <span className="num">{size(file.size)}</span> · <span className="num" title={fullTime(file.modified)}>{shortTime(file.modified)}</span></span>
         <span className="viewer-acts">
           {sourceable && (
             <div className="seg" role="group" aria-label="Show">

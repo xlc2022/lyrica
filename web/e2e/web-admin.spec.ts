@@ -2709,11 +2709,12 @@ test("a run card's Notifications row opens the card in place and takes the passw
   const row = page.locator(".nquestion").filter({ hasText: "Run as root on box?" });
   // The row says what the card says (her reason), and doesn't answer it: Done and Not now live on the card.
   await expect(row).toContainText("Installs the print service.");
-  await expect(row.getByRole("button", { name: "Password", exact: true })).toHaveAttribute("aria-expanded", "false");
+  await expect(row.getByRole("button", { name: "Show card", exact: true })).toHaveAttribute("aria-expanded", "false");
+  await expect(row.getByRole("button", { name: "Show card", exact: true })).toHaveAttribute("title", "Asks for: Password");
   await expect(row.getByRole("button", { name: /^Done/ })).toHaveCount(0);
   await expect(row.locator(".nkind").getByRole("link", { name: "Open thread" })).toBeVisible();
   const width = page.viewportSize()!.width;
-  await row.getByRole("button", { name: "Password", exact: true }).click();
+  await row.getByRole("button", { name: "Show card", exact: true }).click();
   const shown = row.locator(".question-card");
   await expect(shown).toBeVisible();
   // The card itself: Run with the password field, Done with its own meaning only, each consequence in the open.
@@ -3344,7 +3345,7 @@ test("Status model facts preserve existing facts and render empty, measured and 
       await headBtn("Calls").click();
       await expect(head("Calls")).toHaveAttribute("aria-sort", "descending");
       await expect(dataRows.nth(1)).toContainText("fixture-cloud");
-      await facts.getByRole("table").screenshot({ path: `shots/model-calls-sorted-${page.viewportSize()!.width}.png` });
+      if (process.env.SCREENSHOTS) await facts.getByRole("table").screenshot({ path: `${process.env.SCREENSHOTS}/model-calls-sorted-${page.viewportSize()!.width}.png` });
       await headBtn("Calls").click();
       await expect(head("Calls")).toHaveAttribute("aria-sort", "ascending");
       await expect(dataRows.nth(1)).toContainText("fixture-without-speed");
