@@ -313,7 +313,7 @@ Options, for a second run or a non-interactive one (`host/install.sh --help`):
 | Option | Use |
 |---|---|
 | `--name NAME`, `--lan ADDRESS`, `--models DIR` | The three answers, as flags. |
-| `--tailscale NAME` | Also join the tailnet as device `NAME`. Asks once for an auth key; the key is dropped from `.env` once the device has joined. |
+| `--tailscale NAME` | Also join the tailnet as device `NAME`. Asks once for an auth key; the key is dropped from `.env` once the device has joined. The device sends Tailscale no client logs (`TS_NO_LOGS_NO_SUPPORT`), so Tailscale support can't read them; an older host gets this with its next Update…. |
 | `--no-lan` | Reachable over Tailscale only (needs `--tailscale`). |
 | `--no-tailscale` | Leave the tailnet. |
 | `--tailscale-ssh`, `--no-tailscale-ssh` | With `--tailscale`: the host's tailnet device also forwards port 22 to the machine's own sshd, so a machine with no Tailscale of its own can be added to Lyrica as a machine at `NAME.<tailnet>.ts.net`. Kept in `.env` (`TS_SSH=1`) until `--no-tailscale-ssh`. Your tailnet's access rules decide who can reach that port 22. sshd sees every such login come from the container's Docker bridge address, so a `Match Address` rule for private ranges, or fail2ban, treats tailnet logins as local ones; sshd must listen on that bridge (the default, all addresses, does). |
