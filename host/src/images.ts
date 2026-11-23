@@ -63,8 +63,12 @@ const JOB_SAMPLING = ["sampler", "scheduler", "shift", "guidance"];
 const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "tail", "source", "width", "height", "duration", "steps", "cfg", "seed", ...JOB_SAMPLING, "aspectRatio", "loras"];
 /** A request names at most this many LoRA files of the host's for one job (API.md, "LoRAs for one job"): four LoRAs, each maybe a high and low noise pair. */
 const MAX_REQUEST_LORAS = 8;
-/** A driving clip (`motion`) or one to edit (`edit_video`): only its first seconds are used. */
+/**
+ * A driving clip (`motion`), one to edit (`edit_video`) or one to upscale, at most: as JSON 64 MB; as a form's bytes
+ * 1 GiB, as much as ComfyUI takes in one upload (API.md, "Sending files"). Only a driving clip's first seconds are used.
+ */
 const DRIVE_LIMIT = 64 * 1024 * 1024;
+const FORM_CLIP_LIMIT = 1024 * 1024 * 1024;
 /**
  * A clip to extend: the whole clip comes back with the new seconds joined on, and a minute at 1920×1088 passes
  * 64 MB. Its base64 (358 M characters) stays well under Node's longest string (536,870,888), as a JSON body holds it.
@@ -1016,8 +1020,10 @@ export class Images {
    */
   private async video(req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
     // An image and a driving clip, or a clip to extend alone.
-    const { body, form } = await readJob(req, Math.max(2 * IMAGE_BASE64 + Math.ceil(DRIVE_LIMIT / 3) * 4, Math.ceil(EXTEND_LIMIT / 3) * 4) + 1024 * 1024);
+    const { body, form } = await readJob(req, Math.max(2 * IMAGE_BASE64 + Math.ceil(DRIVE_LIMIT / 3) * 4, Math.ceil(EXTEND_LIMIT / 3) * 4) + 1024 * 1024,
+      2 * IMAGE_LIMIT + FORM_CLIP_LIMIT + 1024 * 1024);
     onlyFields(body, VIDEO_FIELDS);
+    const clipLimit = form ? FORM_CLIP_LIMIT : DRIVE_LIMIT;
     const answerLimit = form ? FORM_ANSWER_LIMIT : ANSWER_LIMIT;
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
@@ -1060,7 +1066,7 @@ export class Images {
     let driveSeconds = Infinity;
     if (action === "motion") {
       uploads.drive = fileField(body.drive, "drive", "an MP4");
-      if (uploads.drive.length > DRIVE_LIMIT) throw invalid("drive is larger than 64 MB.");
+      if (uploads.drive.length > clipLimit) throw invalid(`drive is larger than ${MB(clipLimit)}.`);
       const seconds = mp4Seconds(uploads.drive);
       if (seconds === null) throw invalid("drive isn't an MP4 or QuickTime clip whose length can be read.");
       driveSeconds = seconds;
@@ -1069,7 +1075,7 @@ export class Images {
     let source: { width: number; height: number; frames: number; fps: number } | null = null;
     if (action === "edit_video") {
       uploads.source = fileField(body.source, "source", "an MP4");
-      if (uploads.source.length > DRIVE_LIMIT) throw invalid("source is larger than 64 MB.");
+      if (uploads.source.length > clipLimit) throw invalid(`source is larger than ${MB(clipLimit)}.`);
       source = mp4Video(uploads.source);
       if (!source || !source.fps) throw invalid("source isn't an MP4 clip whose video track can be read.");
       if (Math.floor(source.frames * spec.fps / source.fps) < spec.frameStep + spec.frameOffset) throw invalid(`That clip is too short to edit: it needs at least ${Math.ceil((spec.frameStep + spec.frameOffset) / spec.fps * 10) / 10} s.`);
@@ -1196,7 +1202,7 @@ export class Images {
    * `scale` times the shorter side as for images, keeping its frame rate and sound.
    */
   private async upscaleClip(req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
-    const { body, form } = await readJob(req, Math.ceil(DRIVE_LIMIT / 3) * 4 + 1024 * 1024);
+    const { body, form } = await readJob(req, Math.ceil(DRIVE_LIMIT / 3) * 4 + 1024 * 1024, FORM_CLIP_LIMIT + 1024 * 1024);
     onlyFields(body, CLIP_UPSCALE_FIELDS);
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
@@ -1205,7 +1211,7 @@ export class Images {
     if (!recipe.does.includes("upscale") || !template.clipWorkflow) throw invalid("That recipe doesn't upscale clips.");
     if (this.sdcpp) throw invalid("This host makes images with stable-diffusion.cpp, which can't upscale clips.");
     const clip = fileField(body.video, "video", "an MP4");
-    if (clip.length > DRIVE_LIMIT) throw invalid("video is larger than 64 MB.");
+    if (clip.length > (form ? FORM_CLIP_LIMIT : DRIVE_LIMIT)) throw invalid(`video is larger than ${MB(form ? FORM_CLIP_LIMIT : DRIVE_LIMIT)}.`);
     const source = mp4Video(clip);
     if (!source) throw invalid("video isn't an MP4 clip whose video track can be read.");
 

@@ -21,8 +21,16 @@ export function jobForm(fields: Record<string, unknown>, files: JobFiles): FormD
   return form;
 }
 
+/**
+ * The most file bytes a job as JSON carries: its base64 must fit one Node string (536,870,888 characters), and a host
+ * from before forms takes a clip of at most 256 MB anyway.
+ */
+const JSON_FILE_BYTES = 360 * 1024 * 1024;
+
 /** The job as JSON, its files in base64 in their fields: what a host from before forms takes. */
 export function jobJson(fields: Record<string, unknown>, files: JobFiles): string {
+  const total = Object.values(files).flatMap((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v])).reduce((n, b) => n + b.length, 0);
+  if (total > JSON_FILE_BYTES) throw new HostRefused("invalid", "This host is from before it took files as bytes, and these are too large for it: run Update… on it.");
   const b64 = (b: Uint8Array) => Buffer.from(b).toString("base64");
   const inline = Object.fromEntries(Object.entries(files).filter(([, v]) => v !== undefined).map(([k, v]) => [k, Array.isArray(v) ? v.map(b64) : b64(v!)]));
   return JSON.stringify({ ...fields, ...inline });

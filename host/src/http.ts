@@ -56,13 +56,14 @@ export function onlyFields(body: Record<string, unknown>, allowed: string[]): vo
 const FILE_FIELDS = new Set(["image", "mask", "references", "drive", "extend", "source", "video"]);
 
 /**
- * A job's body of at most `limit` bytes: JSON with its files in base64, or multipart/form-data whose `json` part holds
+ * A job's body of at most `limit` bytes (`formLimit` as a form): JSON with its files in base64, or multipart/form-data whose `json` part holds
  * the fields and whose other parts are the files as bytes, set on the body as Buffers (`references` a list). `form`
  * says it came as a form, so its answer goes as one too (sendJob). A form's files never pass through a string.
  */
-export async function readJob(req: IncomingMessage, limit: number): Promise<{ body: Record<string, unknown>; form: boolean }> {
+export async function readJob(req: IncomingMessage, limit: number, formLimit = limit): Promise<{ body: Record<string, unknown>; form: boolean }> {
   const type = req.headers["content-type"] ?? "";
   if (!/^multipart\/form-data\s*;/i.test(type)) return { body: await readJson(req, limit), form: false };
+  limit = formLimit;
   let size = 0, tooBig = false;
   const counted = Readable.from((async function* () {
     for await (const chunk of req) {

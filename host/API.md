@@ -1500,7 +1500,7 @@ newer host made, read after a rollback).
 
   One clip from a video recipe. Only `recipe` and `prompt` are required.
   With `image` (its first frame) the recipe must `animate`, without it
-  `video`. With `drive` too, an MP4 or QuickTime clip of at most 64 MB, the
+  `video`. With `drive` too, an MP4 or QuickTime clip of at most 1 GiB as a form (64 MB as JSON), the
   recipe must do `motion`: the image's subject moves as the person in the
   driving clip does, frame for frame, and the prompt says the scene. The
   clip's moves are taken at the recipe's frame rate (a 30 fps clip keeps
@@ -1544,7 +1544,7 @@ newer host made, read after a rollback).
   JSON 360 MB, since its base64 must fit one Node string of 536,870,888
   characters), it is `invalid` before anything runs, with the seconds that
   still fit. One that still comes out past it is a 500 `too_large`. With `source`, an
-  MP4 of at most 64 MB (and no `image`, `drive`, `extend`, size or
+  MP4 of at most 1 GiB as a form, 64 MB as JSON (and no `image`, `drive`, `extend`, size or
   `aspectRatio`), the recipe must do `edit_video`: the clip is changed as
   the prompt says and keeps its motion, timing and camera. MiniMax H3's
   VFX Edit takes the prompt after its `vfx_edit: ` trigger, which the
@@ -1585,7 +1585,7 @@ newer host made, read after a rollback).
     "colorMatch": "lab", "seed": 1234 }
   ```
 
-  A whole clip, an MP4 of at most 64 MB, through a recipe that lists
+  A whole clip, an MP4 of at most 1 GiB as a form (64 MB as JSON), through a recipe that lists
   `upscale_video`. `scale`, `maxSize`, `colorMatch` and `seed` are as for
   an image upscale. The clip's frames go through SeedVR2 in batches of the
   recipe's `batchSize` (default 33, 4n + 1 frames), blended over

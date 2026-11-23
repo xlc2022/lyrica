@@ -4,7 +4,7 @@ import { closeSync, constants, createReadStream, fstatSync, lstatSync, mkdirSync
 import { posix } from "node:path";
 import type { Readable } from "node:stream";
 import { cleanPng, type GeneratedImage, type ImageInput } from "../models/images.ts";
-import { isMp4, MAX_DRIVE_BYTES, MAX_EXTEND_BYTES, type GeneratedVideo } from "../models/videos.ts";
+import { isMp4, MAX_CLIP_BYTES, MAX_EXTEND_BYTES, type GeneratedVideo } from "../models/videos.ts";
 import { looksLikeText, sniffImage } from "./ops.ts";
 import { FAMILY_ROOT, SHARED, WORKDIR } from "./sandbox.ts";
 import type { ThreadFiles } from "./files.ts";
@@ -348,9 +348,9 @@ export class ThreadImages {
     } catch { return true; }
   }
 
-  /** A clip from the workspace (`motion`'s driving clip, one to edit or upscale): an MP4 of at most 64 MB, read in memory only. */
+  /** A clip from the workspace (`motion`'s driving clip, one to edit or upscale): an MP4 of at most 1 GiB, read in memory only. */
   async readClip(path: string): Promise<Uint8Array> {
-    const bytes = await this.readCapped(path, MAX_DRIVE_BYTES, size => `${path} is ${mb(size)}; a clip is at most ${mb(MAX_DRIVE_BYTES)}`);
+    const bytes = await this.readCapped(path, MAX_CLIP_BYTES, size => `${path} is ${mb(size)}; a clip is at most ${mb(MAX_CLIP_BYTES)}`);
     if (!isMp4(bytes)) throw new Error(`${path} isn't an MP4 clip`);
     return bytes;
   }

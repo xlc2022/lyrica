@@ -1211,7 +1211,7 @@ host recipe defaults apply. Neither tier overrides a host recipe's settings.
 
 The same tool makes short clips: `video` from a prompt, `animate` from an
 image as the first frame, and `motion` from an image and a driving clip (a
-workspace MP4 of at most 64 MB, read with `ThreadImages.readClip`): the
+workspace MP4 of at most 1 GiB, read with `ThreadImages.readClip`): the
 image's subject moves as the person in the clip moves, and the prompt says
 the scene; and `extend` from a workspace clip and a prompt, which adds
 `duration` seconds to it and saves the whole clip as a new one, up to 1 GiB
