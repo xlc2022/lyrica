@@ -6,7 +6,7 @@
 import { posix } from "node:path";
 import { Readable } from "node:stream";
 import { crc32 } from "node:zlib";
-import { MAX_EXTEND_BYTES } from "../models/videos.ts";
+import { MAX_CLIP_BYTES, MAX_EXTEND_BYTES } from "../models/videos.ts";
 import { readSearch, searchTest } from "../store/outputs.ts";
 import type { ByteRange } from "./images.ts";
 import { looksLikeText, sniffImage } from "./ops.ts";
@@ -336,6 +336,23 @@ export class ThreadFiles {
       out.push({ at, bytes: r.stdout, type: "image/jpeg" });
     }
     return out;
+  }
+
+  /**
+   * The start of a clip, for a host that reads only its first `seconds` (motion's driving clip, a clip to edit):
+   * copied without re-encoding, from its first frame, so a long clip never leaves whole. ffmpeg runs in the sandbox;
+   * its file is in the sandbox's own /tmp, removed when it ends. Nothing when ffmpeg isn't installed.
+   */
+  async clipHead(path: string, seconds: number, signal?: AbortSignal): Promise<Buffer | undefined> {
+    const p = this.allow(path, false);
+    const r = await this.box.run(["sh", "-c", `${NEEDS_FFMPEG} test -f "$1" || { echo "$1 is not a file" >&2; exit 1; }; d=$(mktemp -d) && trap 'rm -rf -- "$d"' EXIT && ` +
+      'ffmpeg -v error -nostdin -i "file:$1" -t "$2" -map 0:v:0 -map "0:a:0?" -c copy -f mp4 "$d/h.mp4" && cat -- "$d/h.mp4"', "sh", p, String(seconds)],
+    { timeoutMs: CLIP_TIMEOUT_MS, signal, maxBytes: MAX_CLIP_BYTES }).catch((e: Error) => {
+      throw e.message.startsWith(OUTPUT_OVER) ? new Error(`${path}'s first ${seconds} s are over ${MAX_CLIP_BYTES / 1024 / 1024} MB`) : e;
+    });
+    if (r.code === 3) return undefined;
+    if (r.code !== 0 || !r.stdout.length) throw new Error(r.stderr.toString().trim() || (r.signal ? "cutting the clip took too long" : `${path} couldn't be read as a video`));
+    return r.stdout;
   }
 
   /**

@@ -191,7 +191,7 @@ export class ThreadImages {
     /** The thread whose folder holds a path she sees (/shared is the family's topmost); none for a grant. Without it, /workspace is this thread's and /shared nobody's. */
     private readonly folderOf: (path: string) => string | undefined = (path) => (path.startsWith(`${SHARED}/`) ? undefined : this.ownFolder()),
     /** The thread's files, whose sandbox runs ffmpeg to cut a clip's end and join the next seconds on. */
-    private readonly clips?: () => Pick<ThreadFiles, "clipTail" | "joinClips">) {}
+    private readonly clips?: () => Pick<ThreadFiles, "clipHead" | "clipTail" | "joinClips">) {}
 
   private folder(kind: "images" | "videos" = "images"): string[] { return this.shared() ? ["shared", kind] : [kind]; }
 
@@ -351,6 +351,18 @@ export class ThreadImages {
   /** A clip from the workspace (`motion`'s driving clip, one to edit or upscale): an MP4 of at most 1 GiB, read in memory only. */
   async readClip(path: string): Promise<Uint8Array> {
     const bytes = await this.readCapped(path, MAX_CLIP_BYTES, size => `${path} is ${mb(size)}; a clip is at most ${mb(MAX_CLIP_BYTES)}`);
+    if (!isMp4(bytes)) throw new Error(`${path} isn't an MP4 clip`);
+    return bytes;
+  }
+
+  /**
+   * A clip whose first `seconds` are all a host reads (motion's driving clip, a clip to edit): those seconds and one
+   * more, cut in the sandbox, so a long clip isn't sent whole. The whole clip, as readClip, where ffmpeg isn't installed.
+   */
+  async clipStart(path: string, seconds: number, signal?: AbortSignal): Promise<Uint8Array> {
+    // The extra second covers a cut that ends a frame or two short, which would shorten the host's clip.
+    const bytes = this.clips ? await this.clips().clipHead(path, seconds + 1, signal) : undefined;
+    if (!bytes) return this.readClip(path);
     if (!isMp4(bytes)) throw new Error(`${path} isn't an MP4 clip`);
     return bytes;
   }

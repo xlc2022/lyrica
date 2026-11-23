@@ -1211,9 +1211,12 @@ host recipe defaults apply. Neither tier overrides a host recipe's settings.
 
 The same tool makes short clips: `video` from a prompt, `animate` from an
 image as the first frame, and `motion` from an image and a driving clip (a
-workspace MP4 of at most 1 GiB, read with `ThreadImages.readClip`): the
+workspace MP4 of at most 1 GiB): the
 image's subject moves as the person in the clip moves, and the prompt says
-the scene; and `extend` from a workspace clip and a prompt, which adds
+the scene. Only the clip's first `duration` seconds (60 when left out) and
+one more go to the host (`ThreadImages.clipStart`, copied by ffmpeg in the
+Files sandbox from the first frame; the whole clip where ffmpeg isn't
+installed), since a host reads no more; and `extend` from a workspace clip and a prompt, which adds
 `duration` seconds to it and saves the whole clip as a new one, up to 1 GiB
 (`MAX_JOINED_BYTES`, about ten minutes at 1920×1088):
 only the clip's end goes to the host (`ThreadImages.clipEnd`, its last 2 s
@@ -1226,7 +1229,8 @@ own `/tmp` (memory, or a project chat's encrypted `tmp/`), removed when it
 ends; and
 `edit_video` from a workspace clip and an `instruction` (one English
 sentence, the change and then what stays), which changes the clip and keeps
-its motion, timing, camera and sound, saved as a new clip. Each takes
+its motion, timing, camera and sound, saved as a new clip; like a driving
+clip, only its first seconds go to the host (`clipStart`). Each takes
 an optional size or ratio (not `extend` or `edit_video`) and `duration` in seconds (up to
 the Videos model's longest, which the tool's description names: 60 for a
 model that joins clips, else its longest clip; the recipe's default when
