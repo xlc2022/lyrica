@@ -988,10 +988,11 @@ video-saving node, so the next Update or `host/install.sh` rebuilds it.
 ComfyUI hosts also list a **SCAIL-2** starter (about 28 GB of files),
 which moves an image's subject as the person in a driving clip moves.
 Her `image` tool uses it from the **Videos** list like any video recipe:
-given an image and a driving clip (an MP4 of at most 1 GiB, or 64 MB until the host has run Update… since 2026-11-23), the image's
-subject moves as the person in the clip moves. On a 3090 a 5 s clip at
-1280×704 took 9 to 14 minutes at 21 GB of VRAM and nearly 30 GB of system
-memory, so give the machine room beyond the card. Its weights are MIT; it finds
+given an image and a driving clip (an MP4 of at most 1 GiB, or 64 MB until
+the host has run Update… since 2026-11-23), the image's subject moves as
+the person in the clip moves. On a 3090 a 5 s clip at 1280×704 took 9 to
+14 minutes at 21 GB of VRAM and nearly 30 GB of system memory, so give the
+machine room beyond the card. Its weights are MIT; it finds
 people with SAM 3.1, under Meta's SAM License (commercial use allowed,
 with an acknowledgement in publications, lawful use including privacy
 law, and trade controls). Its frame-reading node is another addition to
@@ -1028,9 +1029,10 @@ counts as H3 rather than P-H3-Image; update the host to get it.
 
 ComfyUI hosts also list **MiniMax H3 VFX Edit** (about 42 GB of files; the
 text encoder and VAEs are H3 Turbo's, so with Turbo installed it fetches
-about 24 GB). Put it in the **Videos** list too: given a clip (an MP4 of at
-most 64 MB) and an instruction ("make it night"), her `image` tool changes
-the clip and keeps its motion, timing, camera and sound, for up to 15 s of
+about 24 GB). Put it in the **Videos** list too: given a clip (an MP4 of
+at most 1 GiB, or 64 MB until the host has run Update… since 2026-11-23)
+and an instruction ("make it night"), her `image` tool changes the clip
+and keeps its motion, timing, camera and sound, for up to 15 s of
 it. It is H3's ref2va checkpoint with a 4-step turbo LoRA and the
 community VFX Edit LoRA, an experimental research release under H3's
 licence, so the same places are excluded. It fits a 96 GB card. Its
