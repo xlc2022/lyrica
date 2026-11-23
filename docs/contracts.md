@@ -1687,7 +1687,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `video` (`prompt`, optional `size` or `aspectRatio`, which goes to the host
     as it is, `duration`, and the `JobSettings`, as for create) and
     `animate` (also `image`, the first frame), `motion` (also `image`, the subject, and
-    `video`, a workspace MP4 read with `ThreadImages.readClip`), `edit_video` (`video`, the clip to change, and
+    `video`, a workspace MP4, its first seconds cut with `ThreadImages.clipStart`), `edit_video` (`video`, the clip to change, cut the same way, and
     `instruction`, sent as the prompt; no size, ratio or LoRAs) and `extend` (`video`, the clip to
     make longer, and `prompt`; `duration` is the seconds to add) make one clip through
     `Models.video` and save it with `ThreadImages.saveVideo`. With
@@ -3056,7 +3056,10 @@ imageFiles(t): ThreadImages
 // ThreadImages.isPortrait(path): Promise<boolean>; as read would mark it (a relative path is under /workspace), for Pi's
 //   `read` of an image: the image tool's tool_result handler then sets `photoOfUser` (photos.ts) in its details. One that
 //   can't be read or hashed counts as a portrait.
-// ThreadImages.readClip(path): Promise<Uint8Array>; a workspace MP4 (a driving clip, one to edit or upscale) via ThreadFiles, at most 1 GiB, in memory.
+// ThreadImages.readClip(path): Promise<Uint8Array>; a workspace MP4 (a clip to upscale) via ThreadFiles, at most 1 GiB, in memory.
+// ThreadImages.clipStart(path, seconds, signal?): Promise<Uint8Array>; a clip's first `seconds` + 1, from its first frame, copied as
+//   they are (ThreadFiles.clipHead, ffmpeg in the sandbox, at most 1 GiB as it streams): what `motion` sends as `drive` and
+//   `edit_video` as `source`, for `duration` or LONGEST_VIDEO_SECONDS. readClip's whole clip where ffmpeg isn't installed.
 // ThreadImages.clipEnd(path, signal?): Promise<Uint8Array>; a clip's last 2 s from the keyframe before them, copied as they are
 //   (ThreadFiles.clipTail, ffmpeg in the sandbox, at most MAX_EXTEND_BYTES as it streams): what `extend` sends a host, with `tail: true`.
 // ThreadImages.saveExtended(path, added: GeneratedVideo, signal?): { path, video }; the host's new seconds joined onto `path`

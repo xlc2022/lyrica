@@ -26,6 +26,7 @@ async function setup() {
   const workspace = new Workspace(s.keyring, s.users, { excludePorts: [] });
   const settings = workspace.settings(s.ada.id);
   const joins: { path: string; added: Buffer }[] = [];
+  const heads: { path: string; seconds: number }[] = [];
   const files = new ThreadImages(() => home, () => ["threads", encodeURIComponent(thread)], async path => {
     const local = path.replace(/^\/workspace\//, "");
     if (local.includes("..") || local.startsWith("/")) throw new Error("outside the thread");
@@ -34,6 +35,8 @@ async function setup() {
   }, settings, undefined, undefined, undefined, undefined, undefined, () => ({
     // ffmpeg's stand-ins: the end is the whole (short) clip, and the join keeps what it was given, to be checked.
     clipTail: async (path: string) => readFileSync(join(folder, path.replace(/^\/workspace\//, ""))),
+    // The start of a short clip is all of it; the seconds asked for are kept, to be checked.
+    clipHead: async (path: string, seconds: number) => { heads.push({ path, seconds }); return readFileSync(join(folder, path.replace(/^\/workspace\//, ""))); },
     joinClips: async (path: string, added: Buffer) => { joins.push({ path, added }); return { bytes: added, poster: png, width: 64, height: 64, frames: 240, fps: 24, audio: true }; },
   }));
   let date = new Date(2026, 9, 12, 10), context: Partial<CallContext> = {}, enabled = true, allowed = true;
@@ -49,7 +52,7 @@ async function setup() {
   const run = (args: unknown, id = "call") => { turn(); return tool.execute(id, args, undefined, undefined, noUI); };
   /** Pi's read of an image at `path`, as the extension hears it. */
   const read = (path: string) => toolResult({ toolName: "read", input: { path }, content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }], details: undefined, isError: false });
-  return { ...s, files, joins, home, folder, settings, asked, run, read, factory, options, tool,
+  return { ...s, files, joins, heads, home, folder, settings, asked, run, read, factory, options, tool,
     tomorrow: () => { date = new Date(2026, 9, 13, 10); }, context: (c: Partial<CallContext>) => { context = c; },
     allow: (yes: boolean) => { allowed = yes; }, enable: (yes: boolean) => { enabled = yes; } };
 }
@@ -338,6 +341,10 @@ describe("image tool results (principles 1 and 4)", () => {
     expect((out.details as { video: { model: string } }).video.model).toBe("shared.workstation/Moves");
     expect(s.asked).toEqual([]);
     expect(s.workstation.server.videos).toEqual([{ recipe: "moves", prompt: "A plain studio", image: png.toString("base64"), drive: mp4.toString("base64") }]);
+    // Only the seconds the host reads leave: the model's longest clip, or those asked for, and one more.
+    expect(s.heads).toEqual([{ path: "/workspace/uploads/dance.mp4", seconds: 61 }]);
+    await s.run({ action: "motion", prompt: "A plain studio", image: "/photos-of-me/portrait.png", video: "/workspace/uploads/dance.mp4", duration: 4 });
+    expect(s.heads.at(-1)).toEqual({ path: "/workspace/uploads/dance.mp4", seconds: 5 });
     await expect(s.run({ action: "motion", prompt: "x", image: "/photos-of-me/portrait.png" })).rejects.toThrow("motion needs video");
     await expect(s.run({ action: "motion", prompt: "x", image: "/photos-of-me/portrait.png", video: "/workspace/uploads/landscape.png" })).rejects.toThrow(/isn't an MP4/);
     expect(s.heard).toEqual([]);

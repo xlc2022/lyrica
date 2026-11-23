@@ -580,8 +580,8 @@ describe("a clip's stills", () => {
 });
 
 /** Extending a clip: its end goes to the host, and the new seconds are joined on here, over the same stand-in. */
-describe("a clip's end and a join", () => {
-  it("cuts the end without re-encoding, joins a host's next seconds as they are, and re-encodes clips from elsewhere", async () => {
+describe("a clip's start, its end and a join", () => {
+  it("cuts the start and the end without re-encoding, joins a host's next seconds as they are, and re-encodes clips from elsewhere", async () => {
     try { execFileSync("ffmpeg", ["-version"]); } catch { return; /* no ffmpeg here */ }
     const { ThreadFiles } = await import("@lyrica/core");
     const { readFileSync } = await import("node:fs");
@@ -613,6 +613,13 @@ describe("a clip's end and a join", () => {
       expect(frames(tail)).toBeGreaterThanOrEqual(48);
       expect(frames(tail)).toBeLessThan(480);
 
+      // The start, from the first frame: the seconds asked for, never the whole clip, sound kept.
+      const head = (await files.clipHead(join(dir, "clip.mp4"), 3))!;
+      expect(frames(head)).toBeGreaterThanOrEqual(72);
+      expect(frames(head)).toBeLessThan(80);
+      writeFileSync(join(dir, "head.mp4"), head);
+      expect(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", join(dir, "head.mp4")]).toString().trim().split("\n")).toEqual(["video", "audio"]);
+
       const joined = await files.joinClips(join(dir, "clip.mp4"), readFileSync(join(dir, "next.mp4")));
       expect(joined).toMatchObject({ width: 320, height: 192, frames: 480 + 48, fps: 24, audio: true });
       expect(frames(joined.bytes)).toBe(528);
@@ -626,9 +633,10 @@ describe("a clip's end and a join", () => {
       expect(other).toMatchObject({ frames: 528, audio: false });
       // Neither reads more than its cap into lyricad: a clip with one keyframe would give all of itself as its end.
       const { MAX_JOINED_BYTES } = await import("@lyrica/core");
-      expect(new Set(caps.filter((c) => c !== undefined))).toEqual(new Set([256 * 1024 * 1024, MAX_JOINED_BYTES]));
+      expect(new Set(caps.filter((c) => c !== undefined))).toEqual(new Set([256 * 1024 * 1024, MAX_JOINED_BYTES, 1024 * 1024 * 1024]));
       writeFileSync(join(dir, "notes.txt"), "not a clip");
       await expect(files.clipTail(join(dir, "notes.txt"), 2)).rejects.toThrow();
+      await expect(files.clipHead(join(dir, "notes.txt"), 2)).rejects.toThrow();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

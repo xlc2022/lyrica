@@ -443,8 +443,9 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   // comes from a clip, since no clip records whether it holds the user (one animated from their photo doesn't say so).
   const portrait = !!still?.portrait || !!p.video || o.files.inPortraitFolder("");
   const request: VideoRequest = { prompt: p.action === "edit_video" ? p.instruction! : p.prompt!, ...(still ? { image: still.input } : {}),
-    ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.clipEnd(p.video!, signal) } : {}),
-    ...(p.action === "edit_video" ? { source: await o.files.readClip(p.video!) } : {}),
+    // A driving clip gives the moves of the clip's first seconds, and an edit is of its first: only those leave.
+    ...(p.action === "motion" ? { drive: await o.files.clipStart(p.video!, p.duration ?? LONGEST_VIDEO_SECONDS, signal) } : {}), ...(p.action === "extend" ? { extend: await o.files.clipEnd(p.video!, signal) } : {}),
+    ...(p.action === "edit_video" ? { source: await o.files.clipStart(p.video!, p.duration ?? LONGEST_VIDEO_SECONDS, signal) } : {}),
     ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }),
     ...sampling(p), ...(p.loras?.length ? { loras: p.loras } : {}) };
   const call = o.call();
