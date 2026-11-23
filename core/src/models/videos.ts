@@ -14,8 +14,11 @@ import { withProgress, type JobProgress } from "./progress.ts";
 export type VideoRequest = { prompt: string; image?: ImageInput; drive?: Uint8Array; extend?: Uint8Array; source?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number; loras?: LoraAsk[] } & JobSettings
 /** A host makes videos of at most this many seconds, chained clips included (host/API.md, "Making videos"). */
 export const LONGEST_VIDEO_SECONDS = 60;
-/** A driving clip's, a clip to edit's or a clip to upscale's largest size (host/API.md, "Making videos"). */
-export const MAX_DRIVE_BYTES = 64 * 1024 * 1024;
+/**
+ * A driving clip's, a clip to edit's or a clip to upscale's largest size (host/API.md, "Making videos"): as much as
+ * ComfyUI takes in one upload, now that a host takes clips as bytes in a form. A host from before forms takes 64 MB.
+ */
+export const MAX_CLIP_BYTES = 1024 * 1024 * 1024;
 /** A clip's end to extend, at its largest (host/API.md, "Making videos"): from a keyframe, ten-odd seconds at most from a host's encoder. */
 export const MAX_EXTEND_BYTES = 256 * 1024 * 1024;
 export interface GeneratedVideo {
@@ -45,13 +48,13 @@ export function validateVideoRequest(r: VideoRequest): void {
   if (r.extend && (r.image || r.drive || r.size || r.aspectRatio)) throw new HostRefused("invalid", "an extended clip takes no image, driving clip or size: it keeps its own");
   if (r.extend && (!isMp4(r.extend) || r.extend.length > MAX_EXTEND_BYTES)) throw new HostRefused("invalid", "a clip's end to extend is an MP4 of at most 256 MB");
   if (r.source && (r.image || r.drive || r.extend || r.size || r.aspectRatio)) throw new HostRefused("invalid", "a clip to edit takes no image, other clip or size: it keeps its own");
-  if (r.source && (!isMp4(r.source) || r.source.length > MAX_DRIVE_BYTES)) throw new HostRefused("invalid", "a clip to edit is an MP4 of at most 64 MB");
+  if (r.source && (!isMp4(r.source) || r.source.length > MAX_CLIP_BYTES)) throw new HostRefused("invalid", "a clip to edit is an MP4 of at most 1 GiB");
   const sampling = validateSampling(r);
   if (sampling) throw new HostRefused("invalid", sampling);
   const loras = validateLoras(r.loras);
   if (loras) throw new HostRefused("invalid", loras);
   if (r.drive && !r.image) throw new HostRefused("invalid", "a driving clip needs the image whose subject moves");
-  if (r.drive && (!isMp4(r.drive) || r.drive.length > MAX_DRIVE_BYTES)) throw new HostRefused("invalid", "a driving clip is an MP4 of at most 64 MB");
+  if (r.drive && (!isMp4(r.drive) || r.drive.length > MAX_CLIP_BYTES)) throw new HostRefused("invalid", "a driving clip is an MP4 of at most 1 GiB");
 }
 
 /** An MP4 starts with its `ftyp` box. */
@@ -64,7 +67,7 @@ export const isMp4 = (b: Uint8Array) => b.length > 12 && Buffer.from(b.subarray(
 export interface VideoUpscaleRequest { video: Uint8Array; scale?: number; maxSize?: number; colorMatch?: typeof COLOR_MATCH[number]; seed?: number }
 
 export function validateVideoUpscale(r: VideoUpscaleRequest): void {
-  if (!isMp4(r.video) || r.video.length > MAX_DRIVE_BYTES) throw new HostRefused("invalid", "a clip to upscale is an MP4 of at most 64 MB");
+  if (!isMp4(r.video) || r.video.length > MAX_CLIP_BYTES) throw new HostRefused("invalid", "a clip to upscale is an MP4 of at most 1 GiB");
   if (r.scale !== undefined && !(r.scale >= 1 && r.scale <= 4)) throw new HostRefused("invalid", "upscale scale must be from 1 to 4");
   if (r.maxSize !== undefined && !(Number.isInteger(r.maxSize) && r.maxSize >= 256 && r.maxSize <= 8192)) throw new HostRefused("invalid", "upscale maxSize must be from 256 to 8192");
   if (r.colorMatch !== undefined && !COLOR_MATCH.includes(r.colorMatch)) throw new HostRefused("invalid", `colour matching is ${COLOR_MATCH.join(", ")}`);

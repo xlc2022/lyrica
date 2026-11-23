@@ -502,7 +502,7 @@ class Models {                                              // new Models(keyrin
   // onProgress (image() takes it too): JobProgress { queued; progress?: 0-1; busyWith?; loading? } as a model host's job goes (models/progress.ts withProgress, exported):
   // the call carries X-Lyrica-Job: <random token> and GET /host/v1/jobs/<token> is read every 2 s until it ends; a host that
   // hasn't known the job after 5 reads isn't asked again. Cloud models report none.
-  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); extend?: Uint8Array (a clip's end to add `duration` seconds to, an MP4 of at most 256 MB, MAX_EXTEND_BYTES, sent with `tail: true`: the answer is only the new seconds; with no image, drive or size); source?: Uint8Array (a clip to edit as the prompt says, an MP4 of at most 64 MB, with no image, drive, extend or size; `duration` takes its first seconds); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1 to LONGEST_VIDEO_SECONDS (60); and JobSettings, as for images, in place of the recipe's; loras?: LoraAsk[], as for images }
+  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 1 GiB, MAX_CLIP_BYTES); extend?: Uint8Array (a clip's end to add `duration` seconds to, an MP4 of at most 256 MB, MAX_EXTEND_BYTES, sent with `tail: true`: the answer is only the new seconds; with no image, drive or size); source?: Uint8Array (a clip to edit as the prompt says, an MP4 of at most 1 GiB, with no image, drive, extend or size; `duration` takes its first seconds); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1 to LONGEST_VIDEO_SECONDS (60); and JobSettings, as for images, in place of the recipe's; loras?: LoraAsk[], as for images }
   // GeneratedVideo { bytes (H.264 MP4); type: "video/mp4"; width; height; frames; fps; duration; audio; seed?; poster: GeneratedImage }
   // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image; or `motion`, with drive; or `edit_video`, with source; or `extend`,
   // with extend) answers, so no clip or first frame reaches a cloud model. A recipe whose `longestSeconds` is under `duration` is skipped
@@ -510,7 +510,8 @@ class Models {                                              // new Models(keyrin
   // POST /host/v1/videos/create with explicit fields only; two hours at most, per 5 s asked (videoTimeout), since a chain gives each clip two hours.
   // Host image and video jobs send their files, and read their results, as bytes in a multipart form (models/job-files.ts
   // postJob, readAnswer; host/API.md, "Sending files"), and as base64 JSON again when a host from before forms refuses one.
-  upscaleVideo(ctx, request: VideoUpscaleRequest { video: Uint8Array (an MP4 of at most 64 MB); scale?: 1-4; maxSize?: 256-8192; colorMatch?; seed?: 0 to MAX_UPSCALE_SEED }, { signal?, beforeSend?, onProgress?, first? }?): Promise<{ video: GeneratedVideo; resolution }>
+  // A job whose files pass 360 MB isn't sent as JSON: the host is told to run Update… (a host before forms takes 64 MB clips).
+  upscaleVideo(ctx, request: VideoUpscaleRequest { video: Uint8Array (an MP4 of at most 1 GiB, MAX_CLIP_BYTES); scale?: 1-4; maxSize?: 256-8192; colorMatch?; seed?: 0 to MAX_UPSCALE_SEED }, { signal?, beforeSend?, onProgress?, first? }?): Promise<{ video: GeneratedVideo; resolution }>
   // The `image.upscale` task's list; only a host recipe that lists `upscale_video` (Offering.upscalesClips) answers ("it doesn't
   // upscale clips"). POST /host/v1/videos/upscale with explicit fields only; two hours at most (VIDEO_TIMEOUT_MS).
   firstVideoModel(ctx): { name; longestSeconds?; extend; sound } | undefined   // the Videos list's first usable model, for the image tool's duration and prompt; no call
@@ -3055,7 +3056,7 @@ imageFiles(t): ThreadImages
 // ThreadImages.isPortrait(path): Promise<boolean>; as read would mark it (a relative path is under /workspace), for Pi's
 //   `read` of an image: the image tool's tool_result handler then sets `photoOfUser` (photos.ts) in its details. One that
 //   can't be read or hashed counts as a portrait.
-// ThreadImages.readClip(path): Promise<Uint8Array>; a workspace MP4 (a driving clip, one to edit or upscale) via ThreadFiles, at most 64 MB, in memory.
+// ThreadImages.readClip(path): Promise<Uint8Array>; a workspace MP4 (a driving clip, one to edit or upscale) via ThreadFiles, at most 1 GiB, in memory.
 // ThreadImages.clipEnd(path, signal?): Promise<Uint8Array>; a clip's last 2 s from the keyframe before them, copied as they are
 //   (ThreadFiles.clipTail, ffmpeg in the sandbox, at most MAX_EXTEND_BYTES as it streams): what `extend` sends a host, with `tail: true`.
 // ThreadImages.saveExtended(path, added: GeneratedVideo, signal?): { path, video }; the host's new seconds joined onto `path`

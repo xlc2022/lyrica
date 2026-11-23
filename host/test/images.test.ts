@@ -1643,11 +1643,16 @@ describe("the image API", () => {
     expect(await refused({ video: clip(1280, 720, 121, 24).toString("base64"), prompt: "x" })).toMatch(/prompt/);
     expect(await refused({ video: clip(1280, 720, 121, 24).toString("base64") }, z.id)).toBe("That recipe doesn't upscale clips.");
     expect(s.comfyFake.seen.prompts).toHaveLength(1);
+    // A clip past 64 MB upscales when it comes as a form's bytes; as JSON it is still refused.
+    const big = clip(1280, 720, 121, 24, 70 * 1024 * 1024);
+    expect(await refused({ video: big.toString("base64") })).toBe("The request is too large.");
+    expect((await s.form("/host/v1/videos/upscale", { recipe: seedvr.id, scale: 2 }, { video: big })).status).toBe(200);
+    expect(s.comfyFake.seen.prompts).toHaveLength(2);
 
     // An image upscale takes a seed SeedVR2 accepts too.
     const image = await s.api("/host/v1/images/upscale", { body: { recipe: seedvr.id, image: PNG.toString("base64") } });
     expect(image.status).toBe(200);
-    expect(s.comfyFake.seen.prompts[1].upscale.inputs.seed).toBeLessThan(2 ** 32);
+    expect(s.comfyFake.seen.prompts[2].upscale.inputs.seed).toBeLessThan(2 ** 32);
     // As a form, the image goes as bytes and comes back as an `images` part; a file in a field it doesn't take is refused.
     const formed = await s.form("/host/v1/images/upscale", { recipe: seedvr.id }, { image: PNG });
     expect(formed.status).toBe(200);

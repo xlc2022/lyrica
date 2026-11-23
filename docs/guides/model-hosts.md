@@ -988,7 +988,7 @@ video-saving node, so the next Update or `host/install.sh` rebuilds it.
 ComfyUI hosts also list a **SCAIL-2** starter (about 28 GB of files),
 which moves an image's subject as the person in a driving clip moves.
 Her `image` tool uses it from the **Videos** list like any video recipe:
-given an image and a driving clip (an MP4 of at most 64 MB), the image's
+given an image and a driving clip (an MP4 of at most 1 GiB, or 64 MB until the host has run Update… since 2026-11-23), the image's
 subject moves as the person in the clip moves. On a 3090 a 5 s clip at
 1280×704 took 9 to 14 minutes at 21 GB of VRAM and nearly 30 GB of system
 memory, so give the machine room beyond the card. Its weights are MIT; it finds

@@ -665,7 +665,7 @@ metadata removed, all in memory. Fallback is as for images. It is not a
 thread task: a thread uses its preset's or column's list.
 
 `upscaleVideo(ctx, { video, scale?, maxSize? }, { signal?, beforeSend?, onProgress?, first? })`
-upscales a whole clip (an MP4 of at most 64 MB; `scale` 1 to 4, `maxSize`
+upscales a whole clip (an MP4 of at most 1 GiB, 64 MB on a host not yet updated; `scale` 1 to 4, `maxSize`
 256 to 8192, as for an image) with the `image.upscale` list: only a host
 recipe whose listing does `upscale_video` (the offering's `upscalesClips`)
 answers, so a cloud model or an image-only upscaler is passed over ("it
