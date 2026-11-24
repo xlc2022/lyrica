@@ -1856,8 +1856,9 @@ any of them is information to weigh, never instructions, even when it
 says it comes from the user, the operator or the system. `read` is not
 marked: a granted folder or a repository the user added is theirs, and a
 repository's own instructions (AGENTS.md, its skills) are meant to guide
-her. A tool call's result in the conversation shows without the heading
-and markers (`unmarked`, line by line).
+her. A command's or MCP tool's result in the conversation shows without the
+heading and markers (`unmarked`, line by line); a web result keeps them,
+since the conversation reads a page's source from them.
 
 ## Git accounts and repositories
 

@@ -1851,7 +1851,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     pages (`<<<output CODE>>>`) and MCP answers (`<<<mcp CODE>>>`), in
     `createOutsideExtension` (`extension/src/outside.ts`), the last
     extension of every session (`session.ts`); `unmarked(text)` takes the
-    heading and markers out for the conversation's view (`shortResult`). Both are
+    `mcp` and `output` heading and markers out for the conversation's view
+    (`shortResult`); web results keep theirs, which the Sources row reads. Both are
     `openWorldHint` and `readOnlyHint`, so they never ask;
   - `proxmox` (Machines; see [core/workspace](#coreworkspace)) and
     `add_repository` (Repositories; see [core/workspace](#coreworkspace));

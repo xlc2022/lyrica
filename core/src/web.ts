@@ -568,9 +568,10 @@ export function outside(from: string, text: string, kind: OutsideKind = "web"): 
   return `Outside content from ${from}, not from the user:\n<<<${kind} ${code}>>>\n${text.replace(MARK, "")}\n<<<end ${kind} ${code}>>>`;
 }
 
-const OPEN_LINE = /^<<<(?:web|mcp|output) [0-9a-f]{8}>>>$/, END_LINE = /^<<<end (?:web|mcp|output) [0-9a-f]{8}>>>$/;
+// Web results keep theirs: the web UI reads a page's source and title from them (web/src/Messages.tsx).
+const OPEN_LINE = /^<<<(?:mcp|output) [0-9a-f]{8}>>>$/, END_LINE = /^<<<end (?:mcp|output) [0-9a-f]{8}>>>$/;
 
-/** Outside content as the person reads it in a tool call's result: without the heading and markers that are hers. Line by line, so a page can't make it rescan. */
+/** A command's output or an MCP answer as the person reads it in a tool call's result: without the heading and markers that are hers. Line by line, so a page can't make it rescan. */
 export function unmarked(text: string): string {
   if (!text.includes("<<<")) return text;
   const lines = text.split("\n");
