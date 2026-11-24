@@ -26,6 +26,7 @@ export * from "./forge/forgejo.ts";
 export * from "./forge/decide.ts";
 export * from "./delegation.ts";
 export * from "./workspace/index.ts";
+export * from "./workspace/mullvad.ts";
 export * from "./web.ts";
 export * from "./browse.ts";
 export * from "./kiwix.ts";

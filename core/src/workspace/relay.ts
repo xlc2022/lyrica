@@ -7,6 +7,7 @@ import * as tls from "node:tls";
 import { createSecureContext, TLSSocket, type SecureContext } from "node:tls";
 import { tailnetProxied, tailnetSocket, viaTailnet } from "../models/tailnet.ts";
 import { makeAuthority } from "./certs.ts";
+import type { Dialer } from "./mullvad.ts";
 import type { GitKind } from "./settings.ts";
 
 // A sandbox run's way to the services its credentials are for (docs/workspace.md,
@@ -61,6 +62,13 @@ export interface RelaySpec {
    * addresses the run's internet never reaches: this machine's own, as the firewall shuts them.
    */
   readOnlyInternet?: { refused(address: string): boolean };
+  /**
+   * Mullvad on (Network.mullvad): the run's internet is only this relay, and every connection it makes for the run
+   * goes through this dialer (mullvad.ts), names looked up inside the tunnel; while the tunnel is down it fails rather
+   * than going direct. With uploads on a CONNECT is tunnelled as it is, without ending its TLS. Claude Code's calls to
+   * Anthropic are model calls and stay as they are.
+   */
+  mullvad?: Dialer;
 }
 
 /** One Claude Code request's tokens: `inputTokens` counts every prompt token read, cached or not. `model` is the model that answered, when it said. */
@@ -117,6 +125,20 @@ function tunnelTo(host: string, port: number, secure: boolean, mayResolveInto: b
     return undefined;
   };
   return { createConnection };
+}
+
+/** A request's own connection through Mullvad (RelaySpec.mullvad), with TLS inside it end to end. */
+function throughMullvad(dial: Dialer, host: string, port: number, secure: boolean): Pick<RequestOptions, "createConnection" | "agent"> {
+  const createConnection: NonNullable<RequestOptions["createConnection"]> = (o, cb) => {
+    dial(host, port).then((raw) => {
+      if (!secure) return cb(null, raw);
+      const { ca } = o as tls.ConnectionOptions;
+      cb(null, tls.connect({ socket: raw, ca, ...(isIP(host) ? {} : { servername: host }) }));
+    }, (err: Error) => cb(err, undefined as never));
+    return undefined;
+  };
+  // No agent: with one (agent: false makes a fresh one) Node would ignore createConnection.
+  return { createConnection, agent: undefined };
 }
 
 /** host:port as a CONNECT names it, without :443. */
@@ -376,6 +398,7 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     return a.length === b.length && timingSafeEqual(a, b);
   };
   const readOnly = spec.readOnlyInternet;
+  const mullvad = spec.mullvad;
   const authority = forge.length || readOnly ? makeAuthority() : undefined;
   const contexts = new Map<string, SecureContext>();
   const contextFor = (host: string) => {
@@ -394,7 +417,9 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     // The Host the client asked for, set here: with a connection of its own (tunnelTo) Node has no agent, takes 80 as the
     // default port and would send "github.com:80" over TLS, which GitHub answered with redirects until git gave up.
     const out = request({ protocol: base.protocol, hostname: hostname(base.host), port: base.port || undefined, method: req.method, path, headers: { ...headers, host: to },
-      ...secure ? { ca: upstreamCAs() } : {}, ...tunnelTo(hostname(base.host), Number(base.port) || (secure ? 443 : 80), secure, to !== ANTHROPIC_HOST) }, (up) => {
+      ...secure ? { ca: upstreamCAs() } : {},
+      ...spec.mullvad && to !== ANTHROPIC_HOST && !spec.upstreams?.[to] ? throughMullvad(spec.mullvad, hostname(base.host), Number(base.port) || (secure ? 443 : 80), secure)
+        : tunnelTo(hostname(base.host), Number(base.port) || (secure ? 443 : 80), secure, to !== ANTHROPIC_HOST) }, (up) => {
       res.writeHead(up.statusCode ?? 502, up.headers);
       // The plan's usage limit: a 429 whose unified rate limit is rejected, with its reset in seconds.
       if (to === ANTHROPIC_HOST && up.statusCode === 429 && up.headers["anthropic-ratelimit-unified-status"] === "rejected") {
@@ -440,10 +465,10 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
   const server = createServer((req, res) => {
     const path = req.url ?? "";
     // Uploads off: a plain http request through the relay as its proxy (an absolute URL), to read.
-    if (readOnly && /^http:\/\//i.test(path)) {
+    if ((readOnly || mullvad) && /^http:\/\//i.test(path)) {
       let url: URL;
       try { url = new URL(path); } catch { return refuse(req, res, 400, "Not a URL.\n"); }
-      return outbound(url.host, false, `${url.pathname}${url.search}`, req, res);
+      return readOnly ? outbound(url.host, false, `${url.pathname}${url.search}`, req, res) : passOn(url, req, res);
     }
     if (!spec.anthropic || !same(String(req.headers.authorization ?? ""), `Bearer ${capability}`) || !path.startsWith("/v1/")) {
       return refuse(req, res, 401, '{"type":"error","error":{"type":"authentication_error","message":"not this run\'s relay"}}', "application/json");
@@ -547,16 +572,17 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     if (kind === "no" || (kind === "upload-pack" && !PACK_HOSTS.includes(host.toLowerCase()) && !forge.some((c) => c.host.toLowerCase() === host.toLowerCase()))) return refuse(req, res, 403, UPLOADS_OFF);
     const port = Number(/^(?:\[[^\]]*\]|[^:]*):(\d+)$/.exec(to)?.[1] ?? (secure ? 443 : 80));
     const base = spec.upstreams?.[to] ? new URL(spec.upstreams[to]!) : undefined;
-    const go = (address: string, p: number, tls: boolean) => {
+    const go = (address: string, p: number, tls: boolean, dial?: Dialer) => {
       const out = (tls ? httpsRequest : httpRequest)({
         host: address, port: p, method: req.method, path, agent: false, headers: { ...passed(req), host: to },
         ...tls ? { ca: upstreamCAs(), ...(isIP(host) ? {} : { servername: host }) } : {},
+        ...dial ? throughMullvad(dial, address, p, tls) : {},
       }, (up) => {
         res.writeHead(up.statusCode ?? 502, up.headers);
         up.pipe(res);
         up.on("error", () => res.destroy());
       });
-      out.on("error", () => { if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" }).end(`${to} couldn't be reached.\n`); else res.destroy(); });
+      out.on("error", (err) => { if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" }).end(dial ? `${err.message}.\n` : `${to} couldn't be reached.\n`); else res.destroy(); });
       if (kind === "upload-pack") {
         let size = 0;
         req.on("data", (d: Buffer) => { size += d.length; if (size > UPLOAD_PACK_LIMIT) { out.destroy(); res.destroy(); } });
@@ -564,6 +590,9 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
       req.pipe(out);
     };
     if (base) return go(hostname(base.host), Number(base.port) || (base.protocol === "https:" ? 443 : 80), base.protocol === "https:");
+    // Through Mullvad the name is looked up inside the tunnel, and the connection leaves from Mullvad's server, where
+    // this machine's own addresses are as far away as any other host's.
+    if (mullvad) return go(host, port, secure, mullvad);
     (isIP(host) ? Promise.resolve([host]) : lookup(host, { all: true, family: 4 }).then((a) => a.map((x) => x.address))).then((addresses) => {
       // IPv4 only, as the sandbox is: an IPv6 literal (::1, ::ffff:127.0.0.1) could reach this machine's loopback.
       if (addresses.some((a) => isIP(a) !== 4)) return refuse(req, res, 403, `${host} is an IPv6 address; with uploads off the internet is reached over IPv4 only.\n`);
@@ -571,6 +600,18 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
       if (!address) return refuse(req, res, 403, `${host} is this machine, which the internet switch never reaches.\n`);
       go(address, port, secure);
     }, () => refuse(req, res, 502, `${host} doesn't resolve.\n`));
+  };
+  /** Mullvad on with uploads on: a plain http request through the relay as its proxy, sent on through the tunnel as it came. */
+  const passOn = (url: URL, req: IncomingMessage, res: ServerResponse) => {
+    const port = Number(url.port) || 80;
+    const out = httpRequest({ host: url.hostname, port, method: req.method, path: `${url.pathname}${url.search}`, headers: { ...passed(req), host: url.host },
+      ...throughMullvad(mullvad!, hostname(url.host), port, false) }, (up) => {
+      res.writeHead(up.statusCode ?? 502, up.headers);
+      up.pipe(res);
+      up.on("error", () => res.destroy());
+    });
+    out.on("error", (err) => { if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" }).end(`${err.message}.\n`); else res.destroy(); });
+    req.pipe(out);
   };
   // Uploads off: requests that came through CONNECT to any other host, after the relay ended their TLS.
   const web = createServer((req, res) => outbound(via.get(req.socket)!, true, req.url ?? "/", req, res));
@@ -590,6 +631,21 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
       via.set(tls, to);
       return web.emit("connection", tls);
     }
+    // Mullvad on with uploads on: any host but a Git host's credentialed request goes through the tunnel as it is,
+    // its TLS untouched; while the tunnel is down the run is told why, and nothing goes direct.
+    if (mullvad && !(authed && ends.has(to))) {
+      const port = Number(/:(\d+)$/.exec(req.url ?? "")?.[1] ?? 443);
+      mullvad(hostname(to), port).then((up) => {
+        track(up);
+        socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        if (head.length) up.write(head);
+        up.pipe(socket).pipe(up);
+      }, (err: Error) => {
+        const body = `${err.message}.\n`;
+        socket.end(`HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
+      });
+      return;
+    }
     if (!forge.length || !authed) {
       return socket.end('HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="lyrica"\r\nContent-Length: 0\r\n\r\n');
     }
@@ -599,7 +655,7 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
       const tls = track(new TLSSocket(socket, { isServer: true, secureContext: contextFor(hostname(to)) }));
       via.set(tls, to);
       git.emit("connection", tls);
-    } else if (spec.internet && /:443$/.test(req.url ?? "") && DOWNLOADS.some((d) => d.test(hostname(to)))) {
+    } else if (spec.internet && !mullvad && /:443$/.test(req.url ?? "") && DOWNLOADS.some((d) => d.test(hostname(to)))) {
       const up = track(connect(443, hostname(to), () => {
         socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
         if (head.length) up.write(head);

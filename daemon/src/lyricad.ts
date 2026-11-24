@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHmac, randomBytes, timingSafeEqual, X509Certificate } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Server as NetServer } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -13,6 +13,7 @@ import {
   localDate, localTime, serverZone, wall, zonedTime, zoneOf,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
+import { egress, Mullvad, mullvadConfig, searxngThroughMullvad, type Dialer, type WireGuardConf } from "@lyrica/core";
 import { Delegation, planCatalog, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
 import { Embedder } from "./embedder.ts";
@@ -50,6 +51,9 @@ import { DIRECT_PORT, directFor, ExternalListener, FRONT_FILE, FRONT_NAMES_FILE,
 import { apiRoutes } from "./routes.ts";
 import { sweepUser, wipeHome, type SweepCounts } from "./sweep.ts";
 
+/** SearXNG's way out while lyricad is locked: nothing goes out, through Mullvad or direct. */
+const REFUSE: Dialer = () => Promise.reject(new Error("Lyrica is locked"));
+
 export interface LyricadOptions {
   /** LYRICA_HOME: self.db, users/, and the Unix socket. */
   home: string;
@@ -80,6 +84,11 @@ export interface LyricadOptions {
    * which calls to tailnet hosts go. No proxy: tailnet hosts are dialled directly.
    */
   tailnet?: { binary?: string; socket?: string; proxy?: string };
+  /**
+   * Mullvad (core/src/workspace/mullvad.ts): wireproxy's path, and the loopback port of SearXNG's way out, which
+   * `lyrica serve` opens (EGRESS_PORT); without it, none is opened.
+   */
+  mullvad?: { binary?: string; egressPort?: number };
   /** The persona seed for setup. Defaults to `persona/` in the repository. */
   seed?: string;
   /** The Unix socket for local clients; false for none. Defaults to `<home>/lyricad.sock`. */
@@ -205,7 +214,7 @@ export class Lyricad implements Drainable {
   readonly limiter: RateLimiter;
   readonly log: (line: string) => void;
   services: Services | undefined;
-  private readonly servers: Server[] = [];
+  private readonly servers: (Server | NetServer)[] = [];
   private readonly routes: Route[];
   private readonly mounted = new Set<string>();
   /** The external proxy's listener, from its settings file: it opens at start, before unlock. */
@@ -215,6 +224,10 @@ export class Lyricad implements Drainable {
   /** The front's names, as last saved to their file: what Host and X-Forwarded-Host may say behind the proxy before unlock. */
   private frontNamesSaved: string[] | undefined;
   readonly tailnet: TailnetControl;
+  /** The one Mullvad tunnel, set up from Administration and used by threads with Mullvad on. */
+  readonly mullvad: Mullvad;
+  /** Whether SearXNG goes through Mullvad, as last read from self.db; while locked SearXNG's way out is shut. */
+  private searxngMullvad = false;
   port = 0;
   /** The loopback port only `tailscale serve` targets: requests on it came through her tailnet address. */
   servePort = 0;
@@ -260,6 +273,7 @@ export class Lyricad implements Drainable {
     this.frontNamesSaved = readFrontNames(join(opts.home, FRONT_NAMES_FILE));
     this.updatePaths = { state: opts.update?.state ?? "/var/lib/lyrica-update", requests: opts.update?.requests ?? join(opts.home, "updates") };
     this.tailnet = new TailnetControl({ binary: opts.tailnet?.binary, socket: opts.tailnet?.socket, runtime: opts.home });
+    this.mullvad = new Mullvad({ binary: opts.mullvad?.binary, log: this.log });
     if (opts.tailnet?.proxy) {
       useTailnetProxy(opts.tailnet.proxy, () => this.tailnet.magicDnsSuffix);
       // The suffix is read now and every few minutes, and whenever the tailnet's status is.
@@ -278,7 +292,7 @@ export class Lyricad implements Drainable {
    */
   get sandboxExcluded(): number[] {
     const proxy = this.opts.tailnet?.proxy;
-    return [this.port, this.servePort, ...(proxy ? [Number(new URL(`http://${proxy}`).port) || 80] : [])];
+    return [this.port, this.servePort, ...(proxy ? [Number(new URL(`http://${proxy}`).port) || 80] : []), ...this.opts.mullvad?.egressPort ? [this.opts.mullvad.egressPort] : []];
   }
 
   /** Setting up: there is no self.db yet. */
@@ -333,6 +347,12 @@ export class Lyricad implements Drainable {
     await new Promise<void>((resolve, reject) => { serve.once("error", reject); serve.listen(this.opts.web?.servePort ?? (this.opts.port === 0 ? 0 : SERVE_PORT), "127.0.0.1", resolve); });
     this.servePort = (serve.address() as AddressInfo).port;
     this.servers.push(serve);
+    // SearXNG's way out: refused while locked, through Mullvad while its switch is on, direct otherwise.
+    const egressPort = this.opts.mullvad?.egressPort;
+    if (egressPort) {
+      await egress(() => (!this.services ? REFUSE : this.searxngMullvad ? this.mullvad.dial : undefined), egressPort).then((s) => this.servers.push(s),
+        (err: Error) => this.log(`SearXNG's way out (127.0.0.1:${egressPort}) didn't open: ${firstLine(err)}`));
+    }
     this.log(`lyricad listening on 127.0.0.1:${this.port}${socket ? ` and ${socket}` : ""}, and on 127.0.0.1:${this.servePort} for her tailnet`);
     mkdirSync(this.opts.home, { recursive: true, mode: 0o700 });
     // A fresh install has no proxy in front of either listener; an older one says so at its first unlock.
@@ -455,6 +475,16 @@ export class Lyricad implements Drainable {
     adopt("kiwix-address", "kiwix-serve", (a) => adoptLocalKiwix(this.keyring.self(), a));
   }
 
+  /** Starts, restarts or stops the Mullvad tunnel for a configuration (Administration → Web search), and SearXNG's switch. */
+  async setMullvad(conf: WireGuardConf | null, searxng: boolean): Promise<void> {
+    this.searxngMullvad = !!conf && searxng;
+    const same = JSON.stringify(conf) === JSON.stringify(this.mullvadConf ?? null);
+    if (same && (this.mullvad.configured || !conf)) return;
+    this.mullvadConf = conf ?? undefined;
+    await this.mullvad.configure(conf);
+  }
+  private mullvadConf: WireGuardConf | undefined;
+
   /** Her name: from self.db once unlocked, else the copy beside it. */
   name(): string {
     if (this.services) return selfName(this.keyring.self());
@@ -512,6 +542,7 @@ export class Lyricad implements Drainable {
   private async unlocked(): Promise<void> {
     const { keyring } = this;
     this.adoptSearxng();
+    await this.setMullvad(mullvadConfig(keyring.self()), searxngThroughMullvad(keyring.self()));
     const users = new Users(keyring);
     const w = this.opts.web ?? {};
     const web: WebAccess = new WebAccess({
@@ -572,6 +603,7 @@ export class Lyricad implements Drainable {
     // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
     const workspace = new Workspace(keyring, users, {
       excludePorts: this.sandboxExcluded, frontDoor: () => web.frontDoor(), log: this.log, bwrap: this.opts.bwrap, pasta: this.opts.pasta,
+      mullvad: () => (this.mullvad.configured ? { dial: this.mullvad.dial, port: this.mullvad.port } : undefined),
       // A private or local-only thread never gets Claude Code. Asked at each run, once the models below exist.
       restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
       // A family member's folder is mounted only when its thread is in the reader's pool and not the other one (folders are named by ID alone).
@@ -1206,7 +1238,8 @@ export class Lyricad implements Drainable {
 
   /** On SIGTERM: stop sessions, close databases, stop listening. */
   async stop(): Promise<void> {
-    await Promise.all(this.servers.map((s) => new Promise((r) => { s.close(r); s.closeAllConnections(); })));
+    await Promise.all(this.servers.map((s) => new Promise((r) => { s.close(r); (s as { closeAllConnections?: () => void }).closeAllConnections?.(); })));
+    this.mullvad.stop();
     this.servers.length = 0;
     const s = this.services;
     this.external.close();

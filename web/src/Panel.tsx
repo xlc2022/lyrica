@@ -27,7 +27,7 @@ import { BYPASS_HINT, modeOrder, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
-import { WebSearchSection } from "./WebSearch.tsx";
+import { mullvadHint, WebSearchSection } from "./WebSearch.tsx";
 import { WipeSection } from "./Wipe.tsx";
 import { DeleteUserButton } from "./DeleteUser.tsx";
 import { browserZone, clock, Confirm, ConfirmDialog, ErrorText, hidden, Prose, shortTime, Switch, useAction, useLoad } from "./ui.tsx";
@@ -291,6 +291,7 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
               <legend>{pool === "general" ? "General threads" : "Private threads"}</legend>
               <Switch label="Internet" checked={n.internet} onChange={(internet) => change(pool, { internet })} />
               <Switch label="Uploads" hint={`Off: her commands, fetches and browser can only read from the internet, not send files or forms. A web address can still carry a little text.${n.internet ? "" : " Needs Internet."}`} checked={n.uploads !== false} disabled={!n.internet} onChange={(uploads) => change(pool, { uploads })} />
+              <Switch label="Mullvad" hint={mullvadHint(n.internet, ctx.me.mullvad)} checked={!!n.mullvad} disabled={!n.internet || (!ctx.me.mullvad && !n.mullvad)} onChange={(mullvad) => change(pool, { mullvad })} />
               <Switch label="Page reader" hint="On: when she fetches a web page, the Cheap subagents model reads it and she gets only its answer to her question, so less of a page can reach her. Her browser, commands and MCP tools still see pages whole." checked={!!n.pageReader} onChange={(pageReader) => change(pool, { pageReader })} />
               <Switch label="Local services (localhost)" hint={`Programs running on ${her()}'s own server, such as a database. Never ${her()}'s own page.`} checked={n.services} onChange={(services) => change(pool, { services })} />
               <div className="field"><span>Allowed hosts</span>

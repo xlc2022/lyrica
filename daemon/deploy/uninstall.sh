@@ -44,8 +44,8 @@ say "Removing her code, tools, updater, CLI and Caddy..."
 # The whole prefix: releases, the bare repository, and tools/ with every
 # program an operator installed there for her sandboxes.
 rm -rf "$PREFIX" /etc/lyrica \
-  /usr/local/lib/lyrica-update /usr/local/lib/lyrica-caddy.stamp \
-  /usr/local/bin/lyrica /usr/local/bin/lyrica-caddy \
+  /usr/local/lib/lyrica-update /usr/local/lib/lyrica-caddy.stamp /usr/local/lib/lyrica-wireproxy.stamp \
+  /usr/local/bin/lyrica /usr/local/bin/lyrica-caddy /usr/local/bin/wireproxy \
   /usr/local/sbin/lyrica-kiwix-start /usr/local/sbin/lyrica-update \
   /usr/local/sbin/lyrica-snapshot /usr/local/sbin/lyrica-restore /usr/local/sbin/lyrica-rollback \
   /var/cache/lyrica-searxng /var/cache/lyrica-tailscale

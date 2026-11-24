@@ -29,8 +29,9 @@ With a yes it:
   on, limiter off, five general engines and short rests (the settings in
   "Configure it" below);
 - pulls the official image at the tag and digest the script pins and runs
-  it as `lyrica-searxng.service`, published on `127.0.0.1:8888` only,
-  started at boot (`/etc/lyrica/searxng.env` holds the image and port);
+  it as `lyrica-searxng.service`, on the host's network but listening on
+  `127.0.0.1:8888` only, started at boot (`/etc/lyrica/searxng.env` holds
+  the image and port);
 - leaves `http://127.0.0.1:8888` in `/var/lib/lyrica/searxng-address`.
   When lyricad unlocks with no address set, it stores that one in
   **Administration → Web search**, once. If you clear or change the
@@ -139,6 +140,9 @@ search:
 outgoing:
   request_timeout: 6.0          # seconds each engine gets; SearXNG's own 3.0 is too short for qwant and yahoo
   max_request_timeout: 10.0     # the most any request may wait
+  proxies:                      # only for a SearXNG on Lyrica's own machine: see "Through Mullvad"
+    all://:
+      - socks5h://127.0.0.1:1058
 
 engines:                        # see "Engines" below
   - name: bing
@@ -275,3 +279,17 @@ URL, without `/search`) and **Save**. The status beneath says **Reachable**
 once a test search returns JSON, or **Unreachable**, with what failed as its
 tooltip. From then on, every thread with the Web search switch on has
 `web_search`.
+
+## Through Mullvad
+
+A SearXNG on Lyrica's own machine (NixOS's module, or install.sh's) sends
+its searches through `lyricad` (`socks5h://127.0.0.1:1058`, the
+`outgoing.proxies` above), which sends them straight on, or through
+Mullvad while **SearXNG through Mullvad** is on under Administration →
+Web search (set Mullvad up there first: [getting-started.md](getting-started.md#send-her-browsing-through-mullvad)).
+The switch takes effect at once, with no restart. While Lyrica is locked,
+SearXNG's searches go nowhere. Settings written by an earlier install.sh
+get the proxy added on its next run, unless they name proxies of their
+own. A SearXNG elsewhere leaves `proxies` out, since it can't reach
+`127.0.0.1:1058` on Lyrica's machine. Some engines refuse Mullvad's
+addresses more often than a home address.

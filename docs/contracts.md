@@ -2320,6 +2320,20 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   comes without it and `auth` says one is stored; a `PUT` with the same
   user@host and no password keeps it, one with a password replaces it.
   `ThreadSettings.searchProvider` says whether either is set.
+  Mullvad (`core/src/workspace/mullvad.ts`): `WebSearch` also has `mullvad:
+  boolean`, `mullvadServer?` (the configuration's Endpoint), `mullvadState:
+  "off" | "connecting" | "connected" | "failed"`, `mullvadCity?`,
+  `mullvadCountry?`, `mullvadIp?`, `mullvadReason?` and `searxngMullvad:
+  boolean`; `PUT { mullvad?: string | null, searxngMullvad? }` sets the
+  WireGuard configuration (`self.db` `settings` `mullvad.config`,
+  `setMullvadConfig`, which throws with the reason for one it can't read;
+  null or "" removes it and SearXNG's switch) or SearXNG's switch
+  (`mullvad.searxng`, refused while none is set), and `Lyricad.setMullvad`
+  starts, restarts or stops the tunnel. The configuration is never sent
+  back. `Me.mullvad` says whether one is set. `Lyricad` takes `mullvad: {
+  binary?, egressPort? }`; `lyrica serve` passes `egressPort: EGRESS_PORT`
+  (1058), which joins `sandboxExcluded`, and `WorkspaceOptions.mullvad()`
+  gives sandboxes the tunnel's `Dialer` and wireproxy's port to exclude.
   `adoptLocalSearxng(self, address)` and `adoptLocalKiwix(self, address)`
   (`adoptLocalAddress`) store the address install.sh (or the
   NixOS module's `searxng` and `zimDir` options) leaves
@@ -2932,7 +2946,7 @@ new Workspace(keyring, users, { excludePorts, frontDoor? })
 //   `hosts` has ever resolved to, and on the proxy's addresses
 resolveAddresses(hosts): Promise<string[] | undefined>   // undefined: never resolved, so no network
 interface WorkspaceThread { userId; pool; threadId; project?; coordinates? } // project: owning project, passed through subagents at every depth; coordinates: a project chat, whose grants and clones are read-only to it
-interface Network { internet: boolean; services: boolean; hosts: string[]; uploads?: boolean; pageReader?: boolean } // uploads false: internet only through the run's relay, reads only (docs/workspace.md, "Uploads"); pageReader true: web_fetch answers a question through the Cheap subagents model ("Page reader")
+interface Network { internet: boolean; services: boolean; hosts: string[]; uploads?: boolean; pageReader?: boolean; mullvad?: boolean } // uploads false: internet only through the run's relay, reads only (docs/workspace.md, "Uploads"); pageReader true: web_fetch answers a question through the Cheap subagents model ("Page reader"); mullvad true: internet only through the relay, which connects through lyricad's one Mullvad tunnel and refuses while it is down ("Mullvad")
 interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   cwd(): Promise<string>;
   ops(): { read; write; edit; bash };     // Pi's tool operations

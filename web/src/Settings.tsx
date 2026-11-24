@@ -8,6 +8,7 @@ import {
 } from "./api.ts";
 import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
+import { mullvadHint } from "./WebSearch.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { modeOrder, MODES } from "./Modes.tsx";
@@ -247,6 +248,8 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
             onChange={(v) => change({ internet: v })} />
           <NetSwitch label="Uploads" hint={`Off: her commands, fetches and browser can only read from the internet, not send files or forms. A web address can still carry a little text.${settings.network.internet ? "" : " Needs Internet."}`} value={settings.uploads ?? null} effective={settings.network.uploads !== false}
             disabled={!settings.network.internet} onChange={(v) => change({ uploads: v })} />
+          <NetSwitch label="Mullvad" hint={mullvadHint(settings.network.internet, ctx.me.mullvad)} value={settings.mullvad ?? null} effective={!!settings.network.mullvad}
+            disabled={!settings.network.internet || (!ctx.me.mullvad && !settings.network.mullvad)} onChange={(v) => change({ mullvad: v })} />
           <NetSwitch label="Page reader" hint="On: when she fetches a web page, the Cheap subagents model reads it and she gets only its answer to her question, so less of a page can reach her. Her browser, commands and MCP tools still see pages whole." value={settings.pageReader ?? null} effective={!!settings.network.pageReader}
             onChange={(v) => change({ pageReader: v })} />
           <NetSwitch label="Local services (localhost)" hint={`Programs running on ${her()}'s own server, such as a database. Never ${her()}'s own page.`} value={settings.services} effective={settings.network.services}

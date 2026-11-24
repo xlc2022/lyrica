@@ -21,6 +21,9 @@ GO_SHA256_amd64=af4c06478303fdd1bfb335fab86c7ccb9b12e529044a946a16a1c4bcc779f8d7
 GO_SHA256_arm64=0ec0774cad42ecf4df82691146ee0b10c303ea594f163acb1737baedd5cc2835
 XCADDY_VERSION=v0.4.7
 CADDY_VERSION=v2.11.7
+# wireproxy, the userspace WireGuard client lyricad runs for Mullvad (docs/workspace.md, "Mullvad"),
+# built from source with the same Go: Debian has no package. The version NixOS 26.05 has.
+WIREPROXY_VERSION=v1.1.2
 # The SearXNG image, by tag and digest, and its port on 127.0.0.1. nix/searxng.nix
 # builds the same commit for NixOS: move both together.
 SEARXNG_IMAGE=docker.io/searxng/searxng:2026.10.28-c360868e5@sha256:268a4b460136dcefc8f2e896b6098ba3f770c8218dbbddcb86811b06b06816f1
@@ -35,6 +38,8 @@ STATE=/var/lib/lyrica
 GITHUB_HOST_KEY="github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
 CADDY=/usr/local/bin/lyrica-caddy
 STAMP=/usr/local/lib/lyrica-caddy.stamp
+WIREPROXY=/usr/local/bin/wireproxy
+WIREPROXY_STAMP=/usr/local/lib/lyrica-wireproxy.stamp
 SRC=$(cd "$(dirname "$0")/../.." && pwd)
 
 say() { printf '%s\n' "$*"; }
@@ -352,6 +357,23 @@ chmod 0755 /usr/local/bin/lyrica
 install -m 0644 "$REL/daemon/deploy/lyrica-clients.conf" /etc/tmpfiles.d/lyrica-clients.conf
 command -v systemd-tmpfiles >/dev/null && systemd-tmpfiles --create /etc/tmpfiles.d/lyrica-clients.conf
 
+# --- Go, for Caddy and wireproxy ---
+# The pinned toolchain from proxy.golang.org, checked against its sha256, fetched once per run when something needs building.
+BUILD=
+fetch_go() {
+  [ -n "$BUILD" ] && return 0
+  BUILD=$(mktemp -d)
+  trap 'rm -rf "$BUILD"' EXIT
+  curl -fsSL -o "$BUILD/go.zip" "https://proxy.golang.org/golang.org/toolchain/@v/v0.0.1-go$GO_VERSION.linux-$ARCH.zip"
+  echo "$GO_SHA256  $BUILD/go.zip" | sha256sum -c --quiet - || die "the Go toolchain's checksum doesn't match"
+  unzip -q "$BUILD/go.zip" -d "$BUILD/go"
+  GOROOT="$BUILD/go/golang.org/toolchain@v0.0.1-go$GO_VERSION.linux-$ARCH"
+}
+go_env() {
+  env -i GOROOT="$GOROOT" PATH="$GOROOT/bin:$BUILD/bin:/usr/bin:/bin" HOME="$BUILD" GOPATH="$BUILD/gopath" GOCACHE="$BUILD/cache" \
+    GOBIN="$BUILD/bin" GOENV=off GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org GOTOOLCHAIN=local GOFLAGS=-mod=mod "$@"
+}
+
 # --- The built-in Caddy ---
 MODULES=$(sed -n 's/.*module: "\([^"]*\)".*/\1/p' "$REL/daemon/src/web/providers.ts" | sort)
 [ -n "$MODULES" ] || die "found no DNS plugins in daemon/src/web/providers.ts"
@@ -361,17 +383,10 @@ if [ -x "$CADDY" ] && [ "$(cat "$STAMP" 2>/dev/null || true)" = "$WANT" ]; then
   CADDY_CHANGED=no
 else
   say "Building Caddy $CADDY_VERSION with the DNS plugins (a few minutes)..."
-  BUILD=$(mktemp -d)
-  trap 'rm -rf "$BUILD"' EXIT
-  curl -fsSL -o "$BUILD/go.zip" "https://proxy.golang.org/golang.org/toolchain/@v/v0.0.1-go$GO_VERSION.linux-$ARCH.zip"
-  echo "$GO_SHA256  $BUILD/go.zip" | sha256sum -c --quiet - || die "the Go toolchain's checksum doesn't match"
-  unzip -q "$BUILD/go.zip" -d "$BUILD/go"
-  GOROOT="$BUILD/go/golang.org/toolchain@v0.0.1-go$GO_VERSION.linux-$ARCH"
+  fetch_go
   # A clean environment: modules come only from proxy.golang.org at the pinned
   # versions, checked against sum.golang.org, whatever root's Go settings say.
-  env -i GOROOT="$GOROOT" PATH="$GOROOT/bin:$BUILD/bin:/usr/bin:/bin" HOME="$BUILD" GOPATH="$BUILD/gopath" GOCACHE="$BUILD/cache" \
-    GOBIN="$BUILD/bin" GOENV=off GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org GOTOOLCHAIN=local GOFLAGS=-mod=mod \
-    sh -c 'go install "github.com/caddyserver/xcaddy/cmd/xcaddy@$1" && shift && v=$1 && out=$2 && shift 2 &&
+  go_env sh -c 'go install "github.com/caddyserver/xcaddy/cmd/xcaddy@$1" && shift && v=$1 && out=$2 && shift 2 &&
       for m in "$@"; do set -- "$@" --with "$m"; shift; done && xcaddy build "$v" --output "$out" "$@"' \
     sh "$XCADDY_VERSION" "$CADDY_VERSION" "$BUILD/caddy" $MODULES >"$BUILD/build.log" 2>&1 \
     || { tail -20 "$BUILD/build.log" >&2; die "building Caddy failed"; }
@@ -379,6 +394,21 @@ else
   mkdir -p "$(dirname "$STAMP")"
   printf '%s' "$WANT" >"$STAMP"
   CADDY_CHANGED=yes
+fi
+
+# --- wireproxy, for Mullvad ---
+# lyricad starts it only once an administrator sets up Mullvad; until then it is only a file.
+WANT_WIREPROXY="wireproxy $WIREPROXY_VERSION go $GO_VERSION"
+if [ -x "$WIREPROXY" ] && [ "$(cat "$WIREPROXY_STAMP" 2>/dev/null || true)" = "$WANT_WIREPROXY" ]; then
+  say "wireproxy is up to date."
+else
+  say "Building wireproxy $WIREPROXY_VERSION..."
+  fetch_go
+  go_env go install "github.com/windtf/wireproxy/cmd/wireproxy@$WIREPROXY_VERSION" >"$BUILD/wireproxy.log" 2>&1 \
+    || { tail -20 "$BUILD/wireproxy.log" >&2; die "building wireproxy failed"; }
+  install -m 0755 "$BUILD/bin/wireproxy" "$WIREPROXY"
+  mkdir -p "$(dirname "$WIREPROXY_STAMP")"
+  printf '%s' "$WANT_WIREPROXY" >"$WIREPROXY_STAMP"
 fi
 # Caddy binds its addresses even before they're up (Tailscale at boot, a DHCP
 # renewal), instead of failing to start.
@@ -399,6 +429,15 @@ if [ "$SEARXNG" = yes ]; then
     umask 077
     sed "s|@SECRET@|$(openssl rand -hex 32)|" "$SRC/daemon/deploy/searxng-settings.yml" >/etc/lyrica/searxng/settings.yml
     umask 022
+  fi
+  # Settings written before Mullvad: SearXNG's searches go out through lyricad's loopback proxy (direct, or through
+  # Mullvad while Administration's switch is on). Added under outgoing: once; an edited copy keeps its edits.
+  if ! grep -q 'socks5h://127.0.0.1:1058' /etc/lyrica/searxng/settings.yml; then
+    if grep -q '^outgoing:' /etc/lyrica/searxng/settings.yml && ! grep -q '^  proxies:' /etc/lyrica/searxng/settings.yml; then
+      sed -i '/^outgoing:/a\  proxies:          # lyricad sends these on, through Mullvad while its switch is on\n    all://:\n      - socks5h://127.0.0.1:1058' /etc/lyrica/searxng/settings.yml
+    else
+      say "/etc/lyrica/searxng/settings.yml has its own outgoing proxies; add socks5h://127.0.0.1:1058 there for SearXNG to go through Mullvad."
+    fi
   fi
   printf 'SEARXNG_IMAGE=%s\nSEARXNG_PORT=%s\n' "$SEARXNG_IMAGE" "$SEARXNG_PORT" >/etc/lyrica/searxng.env
   say "Fetching SearXNG..."

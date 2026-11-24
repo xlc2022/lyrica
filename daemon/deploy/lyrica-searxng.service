@@ -10,9 +10,10 @@ Wants=docker.service network-online.target
 [Service]
 EnvironmentFile=/etc/lyrica/searxng.env
 ExecStartPre=-docker rm -f lyrica-searxng
-# GRANIAN_HOST: the image listens on :: by default, which fails where IPv6 is
-# off; only the published 127.0.0.1 port reaches it either way.
-ExecStart=docker run --rm --name lyrica-searxng --env GRANIAN_HOST=0.0.0.0 --publish 127.0.0.1:${SEARXNG_PORT}:8080 \
+# The host's network, so its searches reach lyricad's loopback proxy (127.0.0.1:1058,
+# settings.yml's outgoing proxies); it listens on 127.0.0.1 alone. GRANIAN_HOST:
+# the image listens on :: by default, which fails where IPv6 is off.
+ExecStart=docker run --rm --name lyrica-searxng --network host --env GRANIAN_HOST=127.0.0.1 --env GRANIAN_PORT=${SEARXNG_PORT} \
   --volume /etc/lyrica/searxng:/etc/searxng --volume /var/cache/lyrica-searxng:/var/cache/searxng ${SEARXNG_IMAGE}
 ExecStop=docker stop lyrica-searxng
 Restart=on-failure

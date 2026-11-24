@@ -2412,6 +2412,15 @@ Details in [docs/sleep.md](docs/sleep.md).
     conversation and a project chat have it, and a subagent whose role
     lists it (the researcher): its browser and profile are its own, with
     none of its parent's logins, and close when it ends.
+  - **Her browsing can leave through Mullvad** (the owner, 2026-11-24;
+    docs/workspace.md, "Mullvad"): a thread's **Mullvad** switch sends its
+    commands', fetches' and browser's internet only through the run's relay
+    and one WireGuard tunnel lyricad runs for every such thread (wireproxy,
+    its child, userspace, no root; the configuration an administrator pastes
+    from Mullvad's site), refused rather than sent direct while the tunnel is
+    down. Administration's **SearXNG through Mullvad** does the same for
+    search. Not the Mullvad app, which would tunnel the whole machine, model
+    calls and her tailnet included.
 
   A switch that's off removes the tools from the session, so she
   can't use them; a subagent or child thread can't turn back on what its

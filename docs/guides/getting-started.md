@@ -834,7 +834,9 @@ Administration, Users.
 Network defaults are per user and pool: general threads start with internet
 on and local services off, private threads with both off, and uploads on.
 Turning **Uploads** off lets her commands and browser only read from the
-internet, through Lyrica's own relay. Turning **Page reader** on (off by default) has
+internet, through Lyrica's own relay. Turning **Mullvad** on (off by default)
+sends her commands, fetches and browser out only through Mullvad, once an
+administrator has set it up (below). Turning **Page reader** on (off by default) has
 another model read each page she fetches and give her only its answer. Change
 them under Settings, Network (below its "New threads" group, which holds
 the default mode and Fallback), or with `lyrica admin net`. Each
@@ -862,6 +864,32 @@ An offline copy of Wikipedia makes both work without the internet:
 download a ZIM file into a folder, point `services.lyrica.zimDir` or
 `LYRICA_ZIM_DIR` at it, and its address fills in as the **Kiwix address**
 of the same section: [wikipedia.md](wikipedia.md).
+
+## Send her browsing through Mullvad
+
+A thread with the **Mullvad** switch on reaches the internet only through
+Mullvad, so the sites she visits see Mullvad's address, not your server's.
+Lyrica runs one WireGuard tunnel for every such thread with wireproxy, a
+userspace WireGuard client (NixOS: from nixpkgs, on lyricad's PATH;
+Debian: `install.sh` builds it into `/usr/local/bin/wireproxy`). Nothing
+else on the machine goes through it.
+
+1. On mullvad.net, open **WireGuard configuration**
+   (mullvad.net/account/wireguard-config), generate a key, pick one
+   server, and download its `.conf`. It takes one of the account's five
+   devices.
+2. Paste the file's text under Administration, **Web search**, Mullvad's
+   **WireGuard configuration**, and **Save**. Its line says **Connected**
+   with the city once Mullvad's own check sees the tunnel.
+3. Turn **Mullvad** on per thread in its settings drawer, or as a default
+   under Settings, **Network**. **SearXNG through Mullvad**, in the same
+   section, sends her searches through it too; some engines refuse
+   Mullvad's addresses.
+
+While the tunnel is down, a thread with Mullvad on has no internet: it is
+never sent from your own address instead. **Remove…** deletes the
+configuration (the device stays on your Mullvad account until you remove
+it there).
 
 ## Give her Nix and NixOS lookups
 

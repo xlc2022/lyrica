@@ -463,7 +463,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   a task's problem shows in red under its select only for the thread's own
   model, a choice made in the thread, or a refusal, never for an optional
   task nobody set), local-only, the internet, Uploads (disabled
-  while Internet is off), Page reader and Local services (localhost) switches (each
+  while Internet is off), Mullvad (disabled while Internet is off, or while
+  no administrator has set Mullvad up and it is off: `Me.mullvad`), Page
+  reader and Local services (localhost) switches (each
   following the user's default until changed), allowed hosts, folders from the allowed paths (read-only or
   read-write), **Machines** (the sandbox, always, then each granted machine
   in mono with its limit and an ✕ to take it off, a machine that no longer
@@ -1130,7 +1132,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (the offline copy of Wikipedia) and its own state word, whose
   Reachable tooltip lists the books kiwix-serve has; one Save for both,
   enabled once either changed; then the **Tick bot checks** switch, saved
-  when toggled; `GET`/`PUT …/admin/web-search`),
+  when toggled; then **Mullvad**: a WireGuard configuration field with
+  Save while none is set, otherwise the server in mono, the tunnel's state
+  word (Connected with the city, Connecting, Not connected with the
+  reason), Replace… and Remove… (a confirm dialog), and the **SearXNG
+  through Mullvad** switch; saving either updates `Me.mullvad`;
+  `GET`/`PUT …/admin/web-search`),
   **Persona**: the persona changes that users sent on, the
   file now and the proposed text side by side, rendered as Markdown
   (who sent them, whether they edited them, and a confirmation when the file

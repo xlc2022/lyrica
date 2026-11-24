@@ -1630,10 +1630,12 @@ values are always visible next to the model badge:
 
 ## Network access from tools
 
-Every thread has four switches and a list:
+Every thread has five switches and a list:
 - **Internet:** anything off this machine.
 - **Uploads:** with internet on, whether it may send as well as read
   ([below](#uploads)). On unless turned off.
+- **Mullvad:** with internet on, whether it goes out only through the
+  server's Mullvad tunnel ([Mullvad](#mullvad)). Off unless turned on.
 - **Page reader:** whether a fetched page reaches her only as another
   model's answer ([Page reader](#page-reader)). Off unless turned on.
 - **Local services (localhost)**: whatever listens on the host's loopback, TCP
@@ -1646,7 +1648,7 @@ Every thread has four switches and a list:
 Each user has defaults per pool, and each thread can override them. General
 threads default to internet on, services off; private threads to everything
 off, because otherwise a `curl` could send private content out.
-`lyrica admin net show|set|hosts …` (`set … uploads|pagereader on|off` too) edits a user's defaults; per-thread
+`lyrica admin net show|set|hosts …` (`set … uploads|mullvad|pagereader on|off` too) edits a user's defaults; per-thread
 overrides go through `WorkspaceSettings.setThread` (the Web thread's UI).
 
 How it is enforced:
@@ -1765,6 +1767,62 @@ browser can't be held to reading. Tools that ignore proxy variables
 (`ssh`, raw sockets) have no internet. Codex's own sandbox for ChatGPT
 Images and a machine's commands don't follow the switch.
 
+### Mullvad
+
+With internet on and **Mullvad** on (`Network.mullvad`, off by default; on
+in a thread whenever it is on in any of its ancestors, as Page reader is),
+the sandbox's internet is its run's relay and nothing else, and the relay
+makes every connection for the run through Mullvad (principle 2: the
+boundary is structural, so nothing goes out from this machine's own address
+by mistake). Such a run gets what a run with Uploads off gets (no DNS, no
+direct connection out, the proxy variables, `LYRICA_PROXY` for Chromium),
+and the relay (`RelaySpec.mullvad` in relay.ts):
+- with uploads on, passes a CONNECT through as it is, without ending its
+  TLS (so no run authority and no `LYRICA_PROXY_KEY`), and a plain-http
+  request through as it came;
+- with uploads off, reads only, as above, but looks no name up itself:
+  the tunnel does, and the connection leaves from Mullvad's server;
+- sends a Git host's credentialed requests and gh's downloads through it
+  too. Claude Code's calls to Anthropic are model calls and go direct.
+
+While the tunnel is down, or no administrator has set it up, every
+connection is refused with the reason (`Mullvad isn't connected yet.`,
+`Mullvad isn't set up in Administration, so this thread has no internet.`),
+never sent direct. Allowed hosts and loopback still go direct, as with
+Uploads off; programs that ignore proxy variables have no internet; a page
+the thread made runs as with internet off when the person opens it, since
+their browser can't be sent through Mullvad. Model calls, machines, MCP
+servers reached by URL and `web_search` don't follow the switch;
+Administration's **SearXNG through Mullvad** sends search through it.
+
+**The tunnel** (`core/src/workspace/mullvad.ts`). An administrator pastes a
+WireGuard configuration from Mullvad's site
+(mullvad.net/account/wireguard-config, one of the account's five devices)
+in Administration → Web search. It is kept in self.db, read
+(`parseWireGuard`: one peer, its keys, Address and Endpoint; a missing DNS
+becomes Mullvad's in-tunnel resolver, 10.64.0.1, so no name is looked up
+outside the tunnel), and given to **wireproxy** (a userspace WireGuard
+client: no root, no interface, no change to this machine's routes), which
+lyricad runs as its child while a configuration is set, restarting it with
+a back-off when it stops. wireproxy listens for SOCKS5 on a free loopback
+port with a random login (`[Socks5]` Username/Password), kept from every
+sandbox as lyricad's own ports are; its configuration reaches it through a
+FIFO in a private folder, never a file. One tunnel serves every run: a
+WireGuard key used by two tunnels at once loses packets to whichever spoke
+last. The state Administration shows comes from Mullvad's own check
+(`https://am.i.mullvad.net/json` through the tunnel, at most once a
+minute): **Connected** when it says the address is Mullvad's, with the city
+and country; **Not connected** with the reason otherwise.
+
+**SearXNG's way out** (`egress`). `lyrica serve` opens a SOCKS5 listener on
+127.0.0.1:1058 (`EGRESS_PORT`), kept from every sandbox, and SearXNG's
+settings name it as their outgoing proxy (`socks5h://127.0.0.1:1058`, in
+nix/module.nix and daemon/deploy/searxng-settings.yml). Each of SearXNG's
+connections goes through the tunnel while **SearXNG through Mullvad** is on
+(refused, never direct, while the tunnel is down), straight out while it is
+off, and nowhere while lyricad is locked; so the switch needs no restart of
+SearXNG.
+
 ### Page reader
 
 With **Page reader** on (`Network.pageReader`, off by default; on in
@@ -1791,7 +1849,7 @@ instead. The switch covers `web_fetch` only: `browse` is unchanged,
 since she acts on a page's own elements there, and `web_search`'s
 snippets, a command's output (`curl` with internet on), MCP tools and a
 subagent's report of what it read still reach her, marked as outside
-content. The switch sits after Uploads in the thread
+content. The switch sits after Mullvad in the thread
 drawer and in Settings → Network per pool; a subagent's reader runs on its
 parent's model rules.
 
