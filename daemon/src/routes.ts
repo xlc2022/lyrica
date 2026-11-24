@@ -3105,7 +3105,7 @@ async function detachThread(d: Lyricad, user: User, r: Request): Promise<Api.Thr
   await keepDaughterFiles(d, user, pool, id);
   if (s.host.busy(user.id, pool, id)) throw new HttpError(409, "this thread is working; stop it or wait for its turn to end");
   if (s.models.callContext(user.id, pool, parent).localOnly) s.models.setLocalOnly(user.id, pool, id, true);
-  s.workspace.settings(user.id).separate(id);
+  s.workspace.settings(user.id).separate(id, pool);
   owner(d, user, (o) => o[pool].detachThread(id));
   s.children.detach(user.id, pool, id);
   // Its next turn opens with the tools of a thread of its own; the parent's open view drops it from its children.
@@ -3549,7 +3549,7 @@ async function deleteThread(d: Lyricad, user: User, pool: Pool, threadId: string
     s().prefs.forget(user.id, pool, doomed);
     s().projects.forget(user.id, pool, doomed);
     // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
-    for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
+    for (const id of kept) { s().workspace.settings(user.id).detach(id, pool); s().host.reload(user.id, pool, id); }
     step("files");
     // The thread is gone by now: a folder that can't go yet (the home locked meanwhile) is the nightly sweep's.
     try { await forgetThreadFiles(s(), user.id, pool, doomed); } catch (err) { d.log(`a forgotten thread's files are left to the sweep: ${(err as Error).name}`); }

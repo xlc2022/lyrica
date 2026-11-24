@@ -841,14 +841,23 @@ export class WorkspaceSettings {
   }
 
   /** A daughter kept when its parent is forgotten: its settings stay as they are, now its own. */
-  detach(threadId: string): void {
+  detach(threadId: string, pool: Pool): void {
+    this.keepReader(threadId, pool);
     this.db.prepare("UPDATE thread_workspaces SET parent = NULL WHERE thread_id = ?").run(threadId);
   }
 
   /** A daughter cut loose from its living parent (POST …/detach): what applies to it now becomes its own, so leaving never widens it. */
-  separate(threadId: string): void {
+  separate(threadId: string, pool: Pool): void {
+    this.keepReader(threadId, pool);
     const t = this.effective(threadId);
     if (t.parent) this.write(threadId, { ...t, parent: null });
+  }
+
+  /** A Page reader on through an ancestor (network) becomes the thread's own before it leaves the family. */
+  private keepReader(threadId: string, pool: Pool): void {
+    if (this.thread(threadId).parent && this.network(threadId, pool).pageReader) {
+      this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.pagereader.${threadId}`, "1");
+    }
   }
 
   /** Throws if a subagent's thread is now wider than its parent's, say because the parent was narrowed. */

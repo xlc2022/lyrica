@@ -164,6 +164,14 @@ describe("grants", () => {
     settings.setThread("g3", "general", { pageReader: null });
     settings.setDefaultNetwork("general", { pageReader: true });
     expect(settings.network("c3", "general").pageReader).toBe(true);
+    // Leaving the family keeps it on, whether cut loose (separate) or kept when the parent goes (detach).
+    settings.setDefaultNetwork("general", { pageReader: false });
+    settings.setThread("g3", "general", { pageReader: true });
+    settings.inheritSettings("g3", "c4", "general");
+    settings.separate("c3", "general");
+    settings.detach("c4", "general");
+    expect(settings.network("c3", "general").pageReader).toBe(true);
+    expect(settings.network("c4", "general").pageReader).toBe(true);
     settings.forgetThreads(["g1"]);
     expect(settings.thread("g1").pageReader).toBeNull();
   });
