@@ -239,7 +239,11 @@ in {
           # How long an engine rests after refusing (SearXNG's own defaults rest one for up to a day).
           suspended_times = { SearxEngineAccessDenied = 600; SearxEngineCaptcha = 900; SearxEngineTooManyRequests = 180; };
         };
-        outgoing = { request_timeout = 6.0; max_request_timeout = 10.0; };
+        outgoing = {
+          request_timeout = 6.0; max_request_timeout = 10.0;
+          # lyricad's loopback proxy sends searches on, through Mullvad while Administration's switch is on (EGRESS_PORT).
+          proxies."all://" = [ "socks5h://127.0.0.1:1058" ];
+        };
         # General search asks five engines, so one resting after a CAPTCHA doesn't end her search; startpage only ever answers with a CAPTCHA.
         engines = [
           { name = "bing"; disabled = false; }
@@ -449,7 +453,7 @@ in {
         LYRICA_SANDBOX_CLOSURE = "${sandboxClosure}/store-paths";
         # The setuid wrappers first: fusermount3 must be the setuid one. shellcheck checks her
         # bash calls before they run, even when sandboxTools is set without it.
-        PATH = lib.mkForce "/run/wrappers/bin:${lib.makeBinPath ([ pkgs.gocryptfs pkgs.openssl pkgs.systemd pkgs.coreutils pkgs.bash pkgs.shellcheck sandboxTools ] ++ lib.optional cfg.tailscale cfg.tailscalePackage)}";
+        PATH = lib.mkForce "/run/wrappers/bin:${lib.makeBinPath ([ pkgs.gocryptfs pkgs.openssl pkgs.systemd pkgs.coreutils pkgs.bash pkgs.shellcheck pkgs.wireproxy sandboxTools ] ++ lib.optional cfg.tailscale cfg.tailscalePackage)}";
       };
       serviceConfig = {
         Type = "simple";

@@ -18,7 +18,7 @@ describe.skipIf(!chromium || !encryptedSandbox)("offline image rendering (princi
     try {
       await workspace.mountHome(ada.id);
       workspace.settings(ada.id).setThread(thread.threadId, thread.pool, { internet: false, services: false, hosts: [] });
-      expect(workspace.network(thread)).toEqual({ internet: false, services: false, hosts: [], uploads: true, pageReader: false });
+      expect(workspace.network(thread)).toEqual({ internet: false, services: false, hosts: [], uploads: true, pageReader: false, mullvad: false });
       const target = workspace.targetFor(thread); const ops = target.ops();
       // Geometry alone: no conversation or prompt text is written to a fixture.
       await ops.write.writeFile("/workspace/diagram.html", "<!doctype html><style>body{margin:0;background:#fff}div{width:200px;height:100px;background:#3050a0}</style><div></div>");

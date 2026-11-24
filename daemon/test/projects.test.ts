@@ -221,7 +221,7 @@ describe("projects", () => {
     ws.setThread(source.id, "general", { internet: true, services: true, hosts: ["127.0.0.1"] });
     const folded = await ada.post<ThreadSummary>(`${path}/fold`, { threadId: source.id });
     expect(folded.status).toBe(200);
-    expect(ws.network(source.id, "general")).toEqual({ internet: false, services: false, hosts: [], uploads: true, pageReader: false });
+    expect(ws.network(source.id, "general")).toEqual({ internet: false, services: false, hosts: [], uploads: true, pageReader: false, mullvad: false });
     expect(folded.body).toMatchObject({ id: source.id, parent: project.id, child: true, steps });
     const moved = (await ada.get<ThreadSummary>(threadPath(child.id))).body;
     expect(moved).toMatchObject({ parent: project.id, child: true, needsYou: true, state: "resolved", wakeAt: due });

@@ -1657,6 +1657,9 @@ test("Uploads and Page reader: a pool's defaults sit under Internet, and a threa
   await expect(general.getByLabel("Uploads")).not.toBeChecked();
   // With internet off, there is nothing to send, so the switch rests.
   await expect(page.getByRole("group", { name: "Private threads" }).getByLabel("Uploads")).toBeDisabled();
+  // Mullvad rests until an administrator sets it up, and says so.
+  await expect(general.getByLabel("Mullvad")).toBeDisabled();
+  await expect(general.locator("label.switch", { hasText: "Mullvad" })).toHaveAttribute("title", /Needs Mullvad set up in Administration\./);
   // Page reader is off by default, and its default can be turned on.
   await expect(general.getByLabel("Page reader")).not.toBeChecked();
   await general.getByLabel("Page reader").click();

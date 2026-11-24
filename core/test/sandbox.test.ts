@@ -484,6 +484,15 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect(r.out).not.toMatch(/nameserver|REACHED|hello from the host/);
   });
 
+  it("with Mullvad on and no tunnel, has no way out: its relay refuses rather than going direct", async () => {
+    const r = await sh(`cat /etc/resolv.conf; echo "proxy=$HTTPS_PROXY"
+      curl -s -o /dev/null -w '%{http_code}\\n' --proxy "$HTTP_PROXY" http://1.1.1.1/
+      (exec 3<>/dev/tcp/1.1.1.1/53 && echo REACHED) 2>/dev/null; true`, box({ internet: true, mullvad: true }));
+    expect(r.out).toMatch(/^proxy=http:\/\/lyrica:[^@\s]+@127\.0\.0\.1:\d+$/m);
+    if (has("curl")) expect(r.out).toMatch(/^502$/m);
+    expect(r.out).not.toMatch(/nameserver|REACHED|hello from the host/);
+  });
+
   it("writes in place, keeping the owner, when the folder won't take a temp file", async () => {
     mkdirSync(p("rw", "locked"));
     writeFileSync(p("rw", "locked", "f.txt"), "old");

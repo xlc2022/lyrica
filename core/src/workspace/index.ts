@@ -20,6 +20,7 @@ import { Browser, browseArgv, type BrowserProcess } from "../browse.ts";
 import { BROWSER_PROFILE, FAMILY_ROOT, Sandbox, sandboxHas, sandboxNix, sandboxTools, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
 export { FAMILY_ROOT } from "./sandbox.ts";
 import type { ClaudeCodeUsage } from "./relay.ts";
+import type { Dialer } from "./mullvad.ts";
 import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
 import type { CodexBox } from "../models/codex.ts";
 import { authorizedKeysLine, machineSetup, machineSudo } from "./machines.ts";
@@ -106,6 +107,11 @@ export interface WorkspaceOptions {
    * Without it, port 443 on this machine's addresses.
    */
   frontDoor?: () => FrontDoor;
+  /**
+   * The Mullvad tunnel, read at every sandbox start (mullvad.ts): its dialer while one is set up, and wireproxy's
+   * port, never reachable from a sandbox. Without one, a thread with Mullvad on has no internet.
+   */
+  mullvad?: () => { dial: Dialer; port?: number } | undefined;
   bwrap?: string;
   pasta?: string;
   /** The SSH client for machines. Default: sandboxedTransport, a sandboxed helper per connection. */
@@ -387,10 +393,12 @@ export class Workspace {
   }
 
   /** The front door and excluded ports as they are now. */
-  private door(): { exclude: number[]; front: number[]; frontHosts: string[]; warn?: (line: string) => void } {
+  private door(): { exclude: number[]; front: number[]; frontHosts: string[]; mullvad?: Dialer; warn?: (line: string) => void } {
     const d = this.opts.frontDoor?.();
+    const m = this.opts.mullvad?.();
     return {
-      exclude: [...new Set([...this.opts.excludePorts, ...(d?.exclude ?? [])])],
+      exclude: [...new Set([...this.opts.excludePorts, ...(d?.exclude ?? []), ...(m?.port ? [m.port] : [])])],
+      ...m ? { mullvad: m.dial } : {},
       front: d?.ports ?? [443],
       frontHosts: d?.hosts ?? [],
       ...(this.opts.log ? { warn: this.opts.log } : {}),

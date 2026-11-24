@@ -21,6 +21,9 @@ search:
 outgoing:
   request_timeout: 6.0  # qwant and yahoo take longer than SearXNG's 3 s
   max_request_timeout: 10.0
+  proxies:          # lyricad sends these on, through Mullvad while its switch is on
+    all://:
+      - socks5h://127.0.0.1:1058
 
 # General search asks five engines, so one resting after a CAPTCHA doesn't end her search.
 engines:

@@ -113,14 +113,14 @@ describe("grants", () => {
 
   it("follow each pool's network defaults unless the thread overrides them", async () => {
     const { settings } = await setup();
-    expect(settings.network("g1", "general")).toEqual({ internet: true, services: false, hosts: [], uploads: true, pageReader: false });
-    expect(settings.network("p1", "private")).toEqual({ internet: false, services: false, hosts: [], uploads: true, pageReader: false });
+    expect(settings.network("g1", "general")).toEqual({ internet: true, services: false, hosts: [], uploads: true, pageReader: false, mullvad: false });
+    expect(settings.network("p1", "private")).toEqual({ internet: false, services: false, hosts: [], uploads: true, pageReader: false, mullvad: false });
     settings.setThread("g1", "general", { internet: false, services: true });
     expect(settings.network("g1", "general")).toMatchObject({ internet: false, services: true });
     settings.setThread("p1", "private", { hosts: ["http://nas.lan:8080/api", "192.168.1.0/24"] });
     expect(settings.network("p1", "private").hosts).toEqual(["nas.lan:8080", "192.168.1.0/24"]);
     settings.setDefaultNetwork("private", { internet: true, hosts: ["nas.lan"] });
-    expect(settings.network("p2", "private")).toEqual({ internet: true, services: false, hosts: ["nas.lan"], uploads: true, pageReader: false });
+    expect(settings.network("p2", "private")).toEqual({ internet: true, services: false, hosts: ["nas.lan"], uploads: true, pageReader: false, mullvad: false });
     expect(() => settings.setThread("p1", "private", { hosts: ["not a host"] })).toThrow(/can't read host/);
     for (const all of ["0.0.0.0/0", "10.0.0.0/0", "0.0.0.0", "0.0.0.0:443", "255.255.255.255"]) {
       expect(() => settings.setThread("p1", "private", { hosts: [all] }), all).toThrow(/every address|isn't a host/);
@@ -174,6 +174,28 @@ describe("grants", () => {
     expect(settings.network("c4", "general").pageReader).toBe(true);
     settings.forgetThreads(["g1"]);
     expect(settings.thread("g1").pageReader).toBeNull();
+  });
+
+  it("keep Mullvad off unless the default or the thread turns it on, and hold it for the whole family", async () => {
+    const { settings } = await setup();
+    expect(settings.network("g1", "general").mullvad).toBe(false);
+    settings.setThread("g1", "general", { mullvad: true });
+    expect(settings.network("g1", "general").mullvad).toBe(true);
+    // A child can't go out from this machine's own address while its parent hides it, now or later.
+    expect(settings.inheritSettings("g1", "c1", "general")).toMatchObject({ mullvad: true });
+    expect(() => settings.inheritSettings("g1", "c2", "general", { mullvad: false })).toThrow(/through Mullvad/);
+    settings.inheritSettings("g2", "c3", "general");
+    expect(settings.network("c3", "general").mullvad).toBe(false);
+    settings.setDefaultNetwork("general", { mullvad: true });
+    expect(settings.network("c3", "general").mullvad).toBe(true);
+    expect(() => settings.setThread("c3", "general", { mullvad: false })).toThrow(/through Mullvad/);
+    // Leaving the family keeps it on.
+    settings.separate("c3", "general");
+    settings.setDefaultNetwork("general", { mullvad: false });
+    expect(settings.network("c3", "general").mullvad).toBe(true);
+    expect(() => settings.setDefaultNetwork("general", { mullvad: "yes" as never })).toThrow(/on or off/);
+    settings.forgetThreads(["g1"]);
+    expect(settings.thread("g1").mullvad).toBeNull();
   });
 
   it("let a subagent have its parent's settings or stricter ones, never wider", async () => {

@@ -7,7 +7,7 @@ import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpCommand, mcpCommandLine, mcpEnv, mcpLimit, mcpPlace, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES, MEMORY_SORTS, type MemorySort,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
-  botChecks, setBotChecks, searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixArticle, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
+  botChecks, setBotChecks, mullvadConfig, setMullvadConfig, searxngThroughMullvad, setSearxngThroughMullvad, searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixArticle, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf, imageTask,
   ChangesUnavailable, type ByteRange, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
   KEEP_PASSWORD_MINUTES, ROOT_TOOL, SECRET_LIMITS,
@@ -806,7 +806,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/network`, (r) => networkDefaults(d, d.userFor(r).id)),
     route("PATCH", `${u}/network/:pool`, async (r) => {
       const user = d.userFor(r);
-      const change = pick(await r.json<Api.NetworkChange>(), ["internet", "services", "hosts", "uploads", "pageReader"]);
+      const change = pick(await r.json<Api.NetworkChange>(), ["internet", "services", "hosts", "uploads", "pageReader", "mullvad"]);
       s().workspace.settings(user.id).setDefaultNetwork(poolOf(r), change);
       return networkDefaults(d, user.id);
     }),
@@ -2513,8 +2513,11 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("PUT", `${u}/admin/web-search`, async (r): Promise<Api.WebSearch> => {
       d.adminFor(r);
-      const { searxng, kiwix, botChecks } = await r.json<Partial<Pick<Api.WebSearch, "searxng" | "kiwix" | "botChecks">>>();
+      const { searxng, kiwix, botChecks, mullvad, searxngMullvad } = await r.json<Partial<Pick<Api.WebSearch, "searxng" | "kiwix" | "botChecks" | "searxngMullvad">> & { mullvad?: string | null }>();
       if (botChecks !== undefined) setBotChecks(d.keyring.self(), botChecks === true);
+      if (mullvad !== undefined) setMullvadConfig(d.keyring.self(), typeof mullvad === "string" ? mullvad : null);
+      if (searxngMullvad !== undefined) setSearxngThroughMullvad(d.keyring.self(), searxngMullvad === true);
+      if (mullvad !== undefined || searxngMullvad !== undefined) await d.setMullvad(mullvadConfig(d.keyring.self()), searxngThroughMullvad(d.keyring.self()));
       if (searxng !== undefined) setSearxngAddress(d.keyring.self(), typeof searxng === "string" ? searxng : null);
       if (kiwix !== undefined) { setKiwixAddress(d.keyring.self(), typeof kiwix === "string" ? kiwix : null); forgetKiwixBooks(); }
       return webSearchView(d);
@@ -2539,8 +2542,14 @@ export function apiRoutes(d: Lyricad): Route[] {
 async function webSearchView(d: Lyricad): Promise<Api.WebSearch> {
   const searxng = searxngAddress(d.keyring.self());
   const kiwix = kiwixAddress(d.keyring.self());
-  const [s, k] = await Promise.all([searxngStatus(searxng), kiwixStatus(kiwix)]);
-  return { ...searxngView(searxng), ...s, kiwix, ...k, botChecks: botChecks(d.keyring.self()) };
+  const conf = mullvadConfig(d.keyring.self());
+  const [s, k, m] = await Promise.all([searxngStatus(searxng), kiwixStatus(kiwix), d.mullvad.status()]);
+  return {
+    ...searxngView(searxng), ...s, kiwix, ...k, botChecks: botChecks(d.keyring.self()),
+    mullvad: !!conf, ...conf ? { mullvadServer: conf.peer.endpoint } : {}, mullvadState: m.state,
+    ...m.city ? { mullvadCity: m.city } : {}, ...m.country ? { mullvadCountry: m.country } : {}, ...m.ip ? { mullvadIp: m.ip } : {}, ...m.reason ? { mullvadReason: m.reason } : {},
+    searxngMullvad: !!conf && searxngThroughMullvad(d.keyring.self()),
+  };
 }
 
 /** What a wipe waits for, as an administrator may see it: the user's display name, never a thread's title. */
@@ -2698,7 +2707,7 @@ function me(d: Lyricad, user: User): Api.Me {
   ];
   return {
     user: card(fresh), previousNames: fresh.profile.previousNames, display: display(d, user.id), savedCredentials, stayUnlocked,
-    ...(fresh.profile.timeZone ? { timeZone: fresh.profile.timeZone } : {}), serverTimeZone: serverZone(),
+    ...(fresh.profile.timeZone ? { timeZone: fresh.profile.timeZone } : {}), serverTimeZone: serverZone(), mullvad: d.mullvad.configured,
     ...(warnings.length ? { warning: warnings.join(" ") } : {}),
   };
 }
@@ -3240,7 +3249,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     ...(answered ? { answered } : {}),
     ...(threadId ? contextOf(d, user, pool, threadId, answered) ?? {} : {}),
     code: applies.code, localOnly: ctx.localOnly,
-    internet: tw.internet, services: tw.services, hosts: tw.hosts, uploads: tw.uploads ?? null, pageReader: tw.pageReader ?? null,
+    internet: tw.internet, services: tw.services, hosts: tw.hosts, uploads: tw.uploads ?? null, pageReader: tw.pageReader ?? null, mullvad: tw.mullvad ?? null,
     network: workspace.network({ userId: user.id, pool, threadId }),
     grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mcpServers: applies.mcpServers, mode: applies.mode, bypassAllowed: workspace.settings(user.id).bypassAllowed(), webSearch: applies.webSearch,
     searchProvider: !!(searxngAddress(d.keyring.self()) || kiwixAddress(d.keyring.self())), images: applies.images, unlogged: isUnlogged, parent: tw.parent,
@@ -3257,12 +3266,13 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
 }
 
 /**
- * Whether a page the thread made may reach the internet when the person opens it: its internet on with uploads on.
- * With uploads off it is treated as off (sealed), since the person's browser can't be held to reading.
+ * Whether a page the thread made may reach the internet when the person opens it: its internet on with uploads on
+ * and Mullvad off. Otherwise it is treated as off (sealed), since the person's browser can't be held to reading, nor
+ * sent through Mullvad.
  */
-const sendsOut = (net: { internet: boolean; uploads?: boolean }) => net.internet && net.uploads !== false;
+const sendsOut = (net: { internet: boolean; uploads?: boolean; mullvad?: boolean }) => net.internet && net.uploads !== false && !net.mullvad;
 
-const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "uploads", "pageReader", "mode", "code", "evidence", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
+const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "uploads", "pageReader", "mullvad", "mode", "code", "evidence", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
 
 /** A thread's subagents and child threads, and theirs, hidden ones included. */
 function descendants(d: Lyricad, user: User, pool: Pool, threadId: string): string[] {

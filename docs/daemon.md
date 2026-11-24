@@ -1474,6 +1474,13 @@ to Node's fetch (a newer undici's dispatcher under Node's fetch loses an
 HTTP/2 answer's content encoding). Anything else is dialled directly, and
 so is a tailnet destination when nothing listens on the port.
 
+Mullvad's tunnel is a child of lyricad: wireproxy, started while
+Administration holds a WireGuard configuration, with SOCKS5 on a free
+loopback port. Threads with the Mullvad switch on reach the internet only
+through it, and `lyrica serve` opens SearXNG's way out on `127.0.0.1:1058`
+beside it; both ports are kept from every sandbox
+([workspace.md](workspace.md#mullvad)).
+
 - `GET …/admin/tailnet` → `Tailnet`, read from her tailscaled each time:
   `connected`, `disconnected`, `notJoined`, or `notInstalled` (no binary, or
   her tailscaled isn't running; `reason` says which), with her tailnet,
@@ -1789,7 +1796,10 @@ encrypt.
   `GOSUMDB` set): Go from `proxy.golang.org`, checked against the sha256 in
   the script; xcaddy, Caddy and every plugin in the provider table at their
   pinned versions, checked by Go against `sum.golang.org`. It rebuilds only
-  when a pin changes.
+  when a pin changes. With the same Go and environment it builds
+  `/usr/local/bin/wireproxy` (`WIREPROXY_VERSION`, the version NixOS 26.05
+  has) for Mullvad, again only when a pin changes; lyricad starts it only
+  once Mullvad is set up ([workspace.md](workspace.md#mullvad)).
 - It sets `net.ipv4.ip_nonlocal_bind=1` (in `/etc/sysctl.d`), so Caddy binds
   its addresses even before they're up: Tailscale at boot, a DHCP change.
 - It asks first whether to run SearXNG for her web search (`LYRICA_SEARXNG=yes`
@@ -1797,7 +1807,11 @@ encrypt.
   With a yes and Docker on the PATH (it never installs Docker), it writes
   `/etc/lyrica/searxng/settings.yml` once from `daemon/deploy/searxng-settings.yml`,
   pulls the pinned `searxng/searxng` image, installs and starts
-  `lyrica-searxng.service` (Docker, published on `127.0.0.1:8888` only) and
+  `lyrica-searxng.service` (Docker on the host's network, listening on
+  `127.0.0.1:8888` only, so it reaches lyricad's SearXNG way out on
+  `127.0.0.1:1058`, the outgoing proxy its settings name; settings written
+  before that get the proxy added under `outgoing:` unless they already
+  name proxies of their own) and
   writes `http://127.0.0.1:8888` to `searxng-address` in her state folder.
   On unlock, lyricad stores that as the SearXNG address while none is set,
   once per address (`adoptLocalSearxng`). The updater's stale-units check
@@ -1964,7 +1978,8 @@ system with the module on. Only x86_64-linux.
   `daemon/deploy/*.service` (same hardening, sealed credential directory, the
   same deploy check), `ip_nonlocal_bind`, and `/etc/lyrica/caddy.json`.
   With `tailscale` on (the default) it also declares `lyrica-tailscaled`
-  from `tailscalePackage` (`pkgs.tailscale`). lyricad starts without
+  from `tailscalePackage` (`pkgs.tailscale`). lyricad's PATH has
+  `pkgs.wireproxy` for Mullvad. lyricad starts without
   `self.db`, setting up. With `searxng` on (the default) it declares
   NixOS's `services.searx` in uWSGI with request logging off, on
   `127.0.0.1:8888` with install.sh's settings and its SearXNG version

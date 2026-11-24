@@ -7,6 +7,7 @@ import type { Readable, Writable } from "node:stream";
 import { capOutput, maskSecrets, secretMasker, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
 import { randomBytes } from "node:crypto";
 import { openRelay, relayPorts, type ClaudeCodeUsage, type Relay } from "./relay.ts";
+import type { Dialer } from "./mullvad.ts";
 import { hostAddresses, nftRules, parseHost, pastaArgs, reachesHost, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
 import { cleanPath, repositoryUrl, within, type GitAccountConfig, type Grant, type Network } from "./settings.ts";
 import { libraryDirs, LIBS } from "./page.ts";
@@ -38,6 +39,8 @@ export interface SandboxSpec {
   exclude?: number[];
   /** Ports never reachable on this machine's own addresses: lyricad's front door (Caddy). */
   front?: number[];
+  /** The Mullvad tunnel's dialer (mullvad.ts), when one is set up: a network with Mullvad on goes out only through it. */
+  mullvad?: Dialer;
   /** This machine's own addresses. Defaults to the host's, read at each run. */
   self?: string[];
   /** Other hosts (IPs or names, resolved at each run) where the front ports are never reachable: an external proxy, Lyrica's name. */
@@ -141,13 +144,19 @@ function caBundle(): string | undefined {
     return tools() && !real.startsWith("/nix/store/") ? undefined : real;
   } catch { return undefined; }
 }
-/** The system's authorities as text, for a run with uploads off to trust beside its relay's; empty if they can't be read. */
+/** The system's authorities as text, for a run reached through its relay to trust beside the relay's; empty if they can't be read. */
 function systemCAs(): string {
   try { const text = readFileSync(realpathSync(CA_BUNDLE), "utf8"); return text.endsWith("\n") ? text : `${text}\n`; } catch { return ""; }
 }
 
 /** Whether a network has internet with uploads off (settings.ts Network.uploads): reached only through the relay, to read. */
 export const uploadsOff = (net: Network): boolean => net.internet && net.uploads === false;
+
+/** Whether a network has internet through Mullvad (settings.ts Network.mullvad): reached only through the relay, which goes through the tunnel. */
+export const throughMullvad = (net: Network): boolean => net.internet && net.mullvad === true;
+
+/** Mullvad on with no tunnel set up: every connection is refused with the reason, never sent direct. */
+const NO_TUNNEL: Dialer = () => Promise.reject(new Error("Mullvad isn't set up in Administration, so this thread has no internet"));
 
 /** Whether an IPv4 address is `range`: an address, or a CIDR range. */
 function inRange(address: string, range: string): boolean {
@@ -158,15 +167,15 @@ function inRange(address: string, range: string): boolean {
   return isIP(address) === 4 && isIP(base) === 4 && (n(address) & mask) === (n(base) & mask);
 }
 
-/** The environment that sends a run with uploads off through its relay. */
-export function readOnlyEnv(relay: Pick<Relay, "port" | "capability" | "leafKey">, hosts: string[]): Record<string, string> {
+/** The environment that sends a run with uploads off or Mullvad on through its relay. */
+export function relayEnv(relay: Pick<Relay, "port" | "capability" | "leafKey" | "ca">, hosts: string[]): Record<string, string> {
   const proxy = `http://lyrica:${relay.capability}@127.0.0.1:${relay.port}`;
   const direct = ["localhost", "127.0.0.1", "::1", ...hosts.flatMap((h) => { try { return [parseHost(h).host]; } catch { return []; } })].join(",");
   const bundle = `${CERTS}/bundle.pem`;
   return {
     HTTPS_PROXY: proxy, HTTP_PROXY: proxy, https_proxy: proxy, http_proxy: proxy, NO_PROXY: direct, no_proxy: direct,
     SSL_CERT_FILE: bundle, CURL_CA_BUNDLE: bundle, REQUESTS_CA_BUNDLE: bundle, PIP_CERT: bundle, GIT_SSL_CAINFO: bundle, NIX_SSL_CERT_FILE: bundle,
-    NODE_EXTRA_CA_CERTS: `${CERTS}/run.pem`, NODE_USE_ENV_PROXY: "1",
+    ...relay.ca ? { NODE_EXTRA_CA_CERTS: `${CERTS}/run.pem` } : {}, NODE_USE_ENV_PROXY: "1",
     LYRICA_PROXY: `http://127.0.0.1:${relay.port}`, ...relay.leafKey ? { LYRICA_PROXY_KEY: relay.leafKey } : {},
   };
 }
@@ -500,14 +509,15 @@ export class Sandbox implements ExecutionTarget {
     if (this.spec.nix && !this.spec.nix.seeding) await this.seedNix(this.spec.nix);
     let forward = this.spec.forward ?? [];
     const c = this.spec.credentials;
-    const readOnly = uploadsOff(this.spec.network);
-    const relay = (c && (c.forge.length || c.anthropic)) || readOnly ? await openRelay({
+    const readOnly = uploadsOff(this.spec.network), mullvad = throughMullvad(this.spec.network);
+    const relay = (c && (c.forge.length || c.anthropic)) || readOnly || mullvad ? await openRelay({
       anthropic: c?.anthropic,
       forge: (c?.forge ?? []).map((r, i) => ({ repo: r.name, kind: r.account.kind, host: r.account.host, token: r.account.token, placeholder: this.placeholders[i]!, ...(r.readOnly ? { readOnly: true } : {}) })),
       reaches: (host) => reachesHost(this.spec.network, host),
       internet: this.spec.network.internet,
       upstreams: c?.upstreams,
       ...readOnly ? { readOnlyInternet: { refused: await this.ownAddresses() } } : {},
+      ...mullvad ? { mullvad: this.spec.mullvad ?? NO_TUNNEL } : {},
       onPullCreate: this.spec.onPullCreate,
       onUsage: this.spec.onUsage,
       onLimit: this.spec.onLimit,
@@ -554,9 +564,9 @@ export class Sandbox implements ExecutionTarget {
   private async launch(argv: string[], cwd: string | undefined, forward: number[], relay: Relay | undefined, extra: Record<string, string>): Promise<Sandboxed> {
     let { internet } = this.spec.network;
     const { services, hosts } = this.spec.network;
-    // Uploads off: no way out of its own but the relay, which only reads.
-    const readOnly = uploadsOff(this.spec.network) && !!relay;
-    if (readOnly) internet = false;
+    // Uploads off or Mullvad on: no way out of its own but the relay, which only reads, or goes through Mullvad, or both.
+    const viaRelay = (uploadsOff(this.spec.network) || throughMullvad(this.spec.network)) && !!relay;
+    if (viaRelay) internet = false;
     if (relay) forward = [...forward, relay.port];
     // Another run's relay is never reachable from here, even with local services on: it would be that run's way out.
     const exclude = [...this.spec.exclude ?? [], ...relayPorts().filter((p) => p !== relay?.port)];
@@ -582,15 +592,16 @@ export class Sandbox implements ExecutionTarget {
       ...forge && c!.identity ? gitIdentityEnv(c!.identity) : {},
       ...claude ? { CLAUDE_CODE_OAUTH_TOKEN: relay!.capability, ANTHROPIC_BASE_URL: `http://127.0.0.1:${relay!.port}` } : {},
     };
-    // Uploads off: every tool that reads proxy variables goes through the relay and trusts its authority beside the
-    // system's; allowed hosts and loopback go direct. Chromium is told the proxy and the certificates' key (chromium-agent.cjs).
-    const proxyEnv = readOnly ? readOnlyEnv(relay!, hosts) : {};
+    // Uploads off or Mullvad on: every tool that reads proxy variables goes through the relay and trusts its authority
+    // beside the system's; allowed hosts and loopback go direct. Chromium is told the proxy and, when the relay ends TLS,
+    // the certificates' key (chromium-agent.cjs).
+    const proxyEnv = viaRelay ? relayEnv(relay!, hosts) : {};
     const data: (readonly [string, string, string?])[] = [
       ["/etc/hosts", ["127.0.0.1 localhost", "::1 localhost", ...resolved.pinned].join("\n") + "\n"],
       ["/etc/resolv.conf", internet ? `nameserver ${SANDBOX_GATEWAY}\n` : ""],
       ...forge ? [[`${FORGE_BIN}/gh`, FORGE, "0555"], [`${FORGE_BIN}/tea`, FORGE, "0555"]] as const : [],
-      ...forge || readOnly ? [[`${CERTS}/run.pem`, relay!.ca!]] as const : [],
-      ...readOnly ? [[`${CERTS}/bundle.pem`, `${systemCAs()}${relay!.ca!}`]] as const : [],
+      ...relay?.ca && (forge || viaRelay) ? [[`${CERTS}/run.pem`, relay.ca]] as const : [],
+      ...viaRelay ? [[`${CERTS}/bundle.pem`, `${systemCAs()}${relay!.ca ?? ""}`]] as const : [],
       ...claude ? [[`${FORGE_BIN}/claude`, CLAUDE, "0555"]] as const : [],
     ];
     const fds: number[] = [];

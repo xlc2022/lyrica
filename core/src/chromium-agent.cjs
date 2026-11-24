@@ -6,9 +6,10 @@
 // Chromium beside the GREASE brand Chromium picks for that major version (Chromium's
 // components/embedder_support/user_agent_utils.cc: GetGreasedUserAgentBrandVersion, GenerateBrandVersionList).
 const AGENT_FLAGS = ["--disable-blink-features=AutomationControlled",
-  // Uploads off (sandbox.ts): the internet only through the run's relay, whose certificates Chromium's own store
-  // doesn't know, so it is told their one key.
-  ...(process.env?.LYRICA_PROXY ? [`--proxy-server=${process.env.LYRICA_PROXY}`, `--ignore-certificate-errors-spki-list=${process.env.LYRICA_PROXY_KEY}`] : [])];
+  // Uploads off or Mullvad on (sandbox.ts): the internet only through the run's relay. With uploads off it ends TLS
+  // with certificates Chromium's own store doesn't know, so it is told their one key.
+  ...(process.env?.LYRICA_PROXY ? [`--proxy-server=${process.env.LYRICA_PROXY}`] : []),
+  ...(process.env?.LYRICA_PROXY && process.env.LYRICA_PROXY_KEY ? [`--ignore-certificate-errors-spki-list=${process.env.LYRICA_PROXY_KEY}`] : [])];
 /** The Network.setUserAgentOverride parameters, from the browser's own Browser.getVersion. */
 function desktopAgent({ product, userAgent }) {
   const full = String(product).split("/")[1] ?? "";

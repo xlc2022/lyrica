@@ -49,8 +49,9 @@ export type GoAhead = "ask" | "acceptEdits" | "auto";
 /**
  * `uploads` false: with internet on, commands, fetches and the browser can only read from it (docs/workspace.md, "Uploads").
  * `pageReader` true: web_fetch answers a question about the page through the Cheap subagents model ("Page reader").
+ * `mullvad` true: with internet on, commands, fetches and the browser reach it only through the server's Mullvad tunnel ("Mullvad").
  */
-export interface Network { internet: boolean; services: boolean; hosts: string[]; uploads?: boolean; pageReader?: boolean }
+export interface Network { internet: boolean; services: boolean; hosts: string[]; uploads?: boolean; pageReader?: boolean; mullvad?: boolean }
 export interface Grant { path: string; writable: boolean }
 
 export interface ApiError { error: string }
@@ -161,6 +162,8 @@ export interface Me {
   timeZone?: string;
   /** The server's zone, which applies while the user has none. */
   serverTimeZone: string;
+  /** Whether an administrator has set up Mullvad, so a thread's Mullvad switch can do more than shut its internet. */
+  mullvad: boolean;
   /** Something the user should know, in plain words: saved credentials with stay-unlocked off; an administrator set their password. */
   warning?: string;
 }
@@ -1325,6 +1328,7 @@ export interface ThreadSettings {
   hosts: string[] | null;
   uploads: boolean | null;
   pageReader: boolean | null;
+  mullvad: boolean | null;
   /** What applies now, defaults included. All off while the host's network self-test refuses network. */
   network: Network;
   /** The folders it may use: its own, less any an ancestor has since taken off, and read-only where an ancestor's is (`effective`). */
@@ -1389,6 +1393,7 @@ export interface ThreadSettingsChange {
   hosts?: string[] | null;
   uploads?: boolean | null;
   pageReader?: boolean | null;
+  mullvad?: boolean | null;
   grants?: Grant[];
   /** Machines of the thread's pool; a branch takes a subset of its parent's. */
   machines?: string[];
@@ -2554,8 +2559,9 @@ export interface SleepTime { time: string }
 export interface OfflinePage { copy: string; text: string }
 
 /**
- * GET /api/u/:userId/admin/web-search → WebSearch; PUT `{ searxng?, kiwix?, botChecks? }` → WebSearch (null or "" clears
- * an address, a field left out keeps it).
+ * GET /api/u/:userId/admin/web-search → WebSearch; PUT `{ searxng?, kiwix?, botChecks?, mullvad?, searxngMullvad? }` →
+ * WebSearch (null or "" clears an address or the Mullvad configuration, a field left out keeps it). `mullvad` in a PUT
+ * is a WireGuard configuration as Mullvad's site gives it; it is never sent back, only `mullvadServer`.
  * The server's SearXNG, for every thread's web_search; the state is a test search made on each call.
  * `reason` says why it is unreachable. A password in the address (basic auth) is never sent back:
  * `searxng` comes without it and `auth` says one is stored; a PUT with the same user@host and no
@@ -2573,6 +2579,17 @@ export interface WebSearch {
   books: { name: string; title: string; language: string; date: string }[];
   /** Whether browse may tick a simple "I'm not a robot" check box it meets; off unless an administrator turns it on. */
   botChecks: boolean;
+  /** Whether a Mullvad WireGuard configuration is set, and the server it names (its Endpoint). */
+  mullvad: boolean;
+  mullvadServer?: string;
+  /** The tunnel: where Mullvad's own check sees it leave, or why it isn't up. */
+  mullvadState: "off" | "connecting" | "connected" | "failed";
+  mullvadCity?: string;
+  mullvadCountry?: string;
+  mullvadIp?: string;
+  mullvadReason?: string;
+  /** Whether SearXNG's searches go through Mullvad; off while it isn't set up. */
+  searxngMullvad: boolean;
 }
 
 export interface PersonaProposal {

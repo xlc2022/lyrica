@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  bootstrap, Keyring, MACHINE_LIMITS, MIN_READER, SCHEMA, parseHost, proxmoxAddress, PersonaStore, PRONOUN_PRESETS, pronounLabel, SystemdCredentials, Users, wipePools, Workspace,
+  bootstrap, EGRESS_PORT, Keyring, MACHINE_LIMITS, MIN_READER, SCHEMA, parseHost, proxmoxAddress, PersonaStore, PRONOUN_PRESETS, pronounLabel, SystemdCredentials, Users, wipePools, Workspace,
   type MachineLimit, type Pool, type Profile, type Pronouns, type User,
 } from "@lyrica/core";
 import { AgentSessionRuntime, InteractiveMode } from "@earendil-works/pi-coding-agent";
@@ -31,7 +31,7 @@ const USAGE = `usage:
   lyrica admin ssh list|remove --user <login> [<name>]            (every machine, Proxmox ones too)
   lyrica admin proxmox add --user <login> <name> https://<host>[:<port>] [--pool general|private] [--limit ask|acceptEdits|auto]
   lyrica admin net show --user <login>
-  lyrica admin net set --user <login> --pool general|private internet|services|uploads|pagereader on|off
+  lyrica admin net set --user <login> --pool general|private internet|services|uploads|pagereader|mullvad on|off
   lyrica admin net hosts add|remove --user <login> --pool general|private <host>
 ${MODELS_USAGE}
   lyrica dev --init <dir>
@@ -99,7 +99,8 @@ async function run(argv: string[]): Promise<void> {
  */
 async function serve(home: string, port: number): Promise<void> {
   // Her tailscaled's proxy (lyrica-tailscaled.service): calls to tailnet hosts go through it.
-  const daemon = new Lyricad({ home, port, tailnet: { proxy: "127.0.0.1:1056" }, clientSocket: process.env.LYRICA_CLIENT_SOCKET || undefined });
+  // SearXNG's way out (searxng-settings.yml's outgoing proxy): direct, or through Mullvad while its switch is on.
+  const daemon = new Lyricad({ home, port, tailnet: { proxy: "127.0.0.1:1056" }, mullvad: { egressPort: EGRESS_PORT }, clientSocket: process.env.LYRICA_CLIENT_SOCKET || undefined });
   let stopping = false;
   const stop = async () => {
     if (stopping) return;
@@ -253,9 +254,9 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
   if (kind === "net" && action === "show") {
     for (const p of ["general", "private"] as const) {
       const n = settings.defaultNetwork(p);
-      console.log(`${p}: internet ${n.internet ? "on" : "off"}, uploads ${n.uploads === false ? "off" : "on"}, page reader ${n.pageReader ? "on" : "off"}, local services ${n.services ? "on" : "off"}, hosts: ${n.hosts.join(", ") || "(none)"}`);
+      console.log(`${p}: internet ${n.internet ? "on" : "off"}, uploads ${n.uploads === false ? "off" : "on"}, page reader ${n.pageReader ? "on" : "off"}, mullvad ${n.mullvad ? "on" : "off"}, local services ${n.services ? "on" : "off"}, hosts: ${n.hosts.join(", ") || "(none)"}`);
     }
-  } else if (kind === "net" && action === "set" && isPool(pool) && (rest[0] === "internet" || rest[0] === "services" || rest[0] === "uploads" || rest[0] === "pagereader") && (rest[1] === "on" || rest[1] === "off")) {
+  } else if (kind === "net" && action === "set" && isPool(pool) && (rest[0] === "internet" || rest[0] === "services" || rest[0] === "uploads" || rest[0] === "pagereader" || rest[0] === "mullvad") && (rest[1] === "on" || rest[1] === "off")) {
     settings.setDefaultNetwork(pool, { [rest[0] === "pagereader" ? "pageReader" : rest[0]]: rest[1] === "on" });
     console.log(`${login}'s ${pool} threads: ${rest[0]} ${rest[1]} by default.`);
   } else if (kind === "net" && action === "hosts" && isPool(pool) && (rest[0] === "add" || rest[0] === "remove") && rest[1]) {
