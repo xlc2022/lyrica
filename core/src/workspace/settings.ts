@@ -41,6 +41,11 @@ export interface Network {
   services: boolean;
   /** Hosts reachable even with internet off: IPs, CIDR ranges or hostnames, each with an optional port. */
   hosts: string[];
+  /**
+   * With internet on, whether it may send as well as read. False: the internet is reached only through the run's
+   * relay, which passes GET, HEAD and OPTIONS (and a git fetch), so nothing can be uploaded. Left out, it may.
+   */
+  uploads?: boolean;
 }
 
 export interface ThreadWork {
@@ -58,6 +63,8 @@ export interface ThreadWorkspace {
   internet: boolean | null;
   services: boolean | null;
   hosts: string[] | null;
+  /** Uploads with internet on (Network.uploads); null follows the default. Kept in `settings` (workspace.uploads.<thread>). */
+  uploads?: boolean | null;
   mode: PermissionMode;
   /** Switches: web_search and web_fetch, and the image tool. Off removes the tools from the session. */
   webSearch: boolean;
@@ -393,8 +400,8 @@ export function checkChecks(value: unknown): string[] {
 
 /** Defaults when the user hasn't set any: general has internet, private has nothing. */
 const DEFAULTS: Record<Pool, Network> = {
-  general: { internet: true, services: false, hosts: [] },
-  private: { internet: false, services: false, hosts: [] },
+  general: { internet: true, services: false, hosts: [], uploads: true },
+  private: { internet: false, services: false, hosts: [], uploads: true },
 };
 
 export type PhotoCloudPolicy = "never" | "ask" | "always";
@@ -517,11 +524,13 @@ export class WorkspaceSettings {
   /** The user's network defaults for threads in `pool`. */
   defaultNetwork(pool: Pool): Network {
     const stored = this.setting(`workspace.network.${pool}`);
-    return stored ? JSON.parse(stored) : DEFAULTS[pool];
+    // Defaults saved before Uploads existed allow them, as everything did then.
+    return stored ? { uploads: true, ...JSON.parse(stored) } : DEFAULTS[pool];
   }
 
   setDefaultNetwork(pool: Pool, change: Partial<Network>): Network {
     const next = { ...this.defaultNetwork(pool), ...change };
+    if (typeof next.uploads !== "boolean") throw new Error("uploads is on or off");
     next.hosts = next.hosts.map((h) => parseHost(h).entry);
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.network.${pool}`, JSON.stringify(next));
     return next;
@@ -588,11 +597,12 @@ export class WorkspaceSettings {
   thread(threadId: string): ThreadWorkspace {
     const row = this.db.prepare("SELECT * FROM thread_workspaces WHERE thread_id = ?").get(threadId) as ThreadRow | undefined;
     // A thread from before modes were saved for every new thread: Auto, as it had then. New threads get the default from startThread.
-    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, claudeCode: false, code: false, evidence: "auto", machines: [], repositories: [], mcpServers: [], parent: null };
+    if (!row) return { grants: [], internet: null, services: null, hosts: null, uploads: null, mode: "auto", webSearch: true, images: true, claudeCode: false, code: false, evidence: "auto", machines: [], repositories: [], mcpServers: [], parent: null };
     const threadWork = this.threadWork(threadId);
     const bool = (v: number | null) => (v === null ? null : v === 1);
+    const uploads = this.setting(`workspace.uploads.${threadId}`);
     return {
-      grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services),
+      grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services), uploads: uploads === undefined ? null : uploads === "1",
       hosts: row.hosts === null ? null : JSON.parse(row.hosts), mode: row.mode, webSearch: row.web_search === 1, images: row.images === 1,
       claudeCode: row.claude_code === 1, code: row.code === 1, evidence: EVIDENCE_SETTINGS.includes(row.evidence as EvidenceSetting) ? (row.evidence as EvidenceSetting) : "auto", machines: JSON.parse(row.machines), repositories: JSON.parse(row.repositories), mcpServers: JSON.parse(row.mcp_servers), parent: row.parent, ...(threadWork ? { threadWork } : {}),
     };
@@ -645,6 +655,7 @@ export class WorkspaceSettings {
     }
     next.grants = next.grants.map((g) => ({ path: cleanPath(g.path), writable: g.writable }));
     next.hosts = next.hosts?.map((h) => parseHost(h).entry) ?? null;
+    if (next.uploads !== undefined && next.uploads !== null && typeof next.uploads !== "boolean") throw new Error("uploads is on, off or the default");
     const allowed = this.allowed();
     for (const g of next.grants) {
       checkGrant(allowed, pool, g);
@@ -759,6 +770,9 @@ export class WorkspaceSettings {
       images = excluded.images, claude_code = excluded.claude_code, code = excluded.code, evidence = excluded.evidence, machines = excluded.machines, repositories = excluded.repositories, mcp_servers = excluded.mcp_servers`).run(threadId,
       JSON.stringify(t.grants), int(t.internet), int(t.services), t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.parent, int(t.webSearch), int(t.images),
       int(t.claudeCode), int(t.code), t.evidence, JSON.stringify(t.machines), JSON.stringify(t.repositories), JSON.stringify(t.mcpServers));
+    // Uploads live beside the row, so no schema step was needed for them.
+    if (t.uploads === null || t.uploads === undefined) this.db.prepare("DELETE FROM settings WHERE key = ?").run(`workspace.uploads.${threadId}`);
+    else this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.uploads.${threadId}`, t.uploads ? "1" : "0");
   }
 
   /**
@@ -779,13 +793,14 @@ export class WorkspaceSettings {
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.narrowed.${childThreadId}`, narrowed ? "1" : "0");
     // Start from nothing, so a refused narrowing leaves the child with no access at all.
     this.write(childThreadId, {
-      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, claudeCode: false, code: false, evidence: "auto", machines: [], repositories: [], mcpServers: [], parent: parentThreadId,
+      grants: [], internet: false, services: false, hosts: [], uploads: false, mode: "plan", webSearch: false, images: false, claudeCode: false, code: false, evidence: "auto", machines: [], repositories: [], mcpServers: [], parent: parentThreadId,
     });
     return this.setThread(childThreadId, pool, {
       grants: narrower.grants ?? parent.grants,
       internet: narrower.internet ?? net.internet,
       services: narrower.services ?? net.services,
       hosts: narrower.hosts ?? net.hosts,
+      uploads: narrower.uploads ?? net.uploads ?? true,
       mode: narrower.mode ?? parent.mode,
       webSearch: narrower.webSearch ?? parent.webSearch,
       images: narrower.images ?? parent.images,
@@ -803,7 +818,7 @@ export class WorkspaceSettings {
     const mine = this.network(threadId, pool), parent = this.network(projectId, pool);
     this.write(threadId, { ...this.effective(threadId), parent: projectId,
       internet: mine.internet && parent.internet, services: mine.services && parent.services,
-      hosts: mine.hosts.filter(host => parent.hosts.includes(host)),
+      hosts: mine.hosts.filter(host => parent.hosts.includes(host)), uploads: mine.uploads !== false && parent.uploads !== false,
     });
     this.write(threadId, this.effective(threadId));
     this.narrowChildren(threadId);
@@ -840,6 +855,7 @@ export class WorkspaceSettings {
     const mine = this.resolve(child, pool);
     const theirs = this.network(parentThreadId, pool);
     if (mine.internet && !theirs.internet) throw new Error("the parent thread has no internet");
+    if (mine.internet && mine.uploads !== false && theirs.uploads === false) throw new Error("the parent thread has uploads off");
     if (mine.services && !theirs.services) throw new Error("the parent thread can't reach local services");
     const extra = mine.hosts.find((h) => !theirs.hosts.includes(h));
     if (extra) throw new Error(`${extra} isn't in the parent thread's hosts`);
@@ -873,7 +889,7 @@ export class WorkspaceSettings {
 
   private resolve(t: ThreadWorkspace, pool: Pool): Network {
     const d = this.defaultNetwork(pool);
-    return { internet: t.internet ?? d.internet, services: t.services ?? d.services, hosts: t.hosts ?? d.hosts };
+    return { internet: t.internet ?? d.internet, services: t.services ?? d.services, hosts: t.hosts ?? d.hosts, uploads: t.uploads ?? d.uploads ?? true };
   }
 
   /** What this thread's tools may reach. */
@@ -964,6 +980,7 @@ export class WorkspaceSettings {
     const t = JSON.stringify(threads);
     this.db.prepare("DELETE FROM thread_workspaces WHERE thread_id IN (SELECT value FROM json_each(?))").run(t);
     this.db.prepare("DELETE FROM panel_files WHERE thread_id IN (SELECT value FROM json_each(?))").run(t);
+    this.db.prepare("DELETE FROM settings WHERE key IN (SELECT 'workspace.uploads.' || value FROM json_each(?))").run(t);
   }
 
   /**
@@ -978,6 +995,7 @@ export class WorkspaceSettings {
     const gone = rows.map((r) => r.id).filter((id) => !exists(id));
     if (!gone.length) return 0;
     const t = JSON.stringify(gone);
+    this.db.prepare("DELETE FROM settings WHERE key IN (SELECT 'workspace.uploads.' || value FROM json_each(?))").run(t);
     return Number(this.db.prepare("DELETE FROM thread_workspaces WHERE thread_id IN (SELECT value FROM json_each(?))").run(t).changes)
       + Number(this.db.prepare("DELETE FROM panel_files WHERE thread_id IN (SELECT value FROM json_each(?))").run(t).changes);
   }

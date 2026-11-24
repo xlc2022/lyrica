@@ -474,6 +474,16 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("cat /proc/net/dev | tail -n +3 | cut -d: -f1 | tr -d ' '")).out.trim()).toBe("lo");
   });
 
+  it("with uploads off, has no way out but its relay, which only reads and never reaches this machine", async () => {
+    const r = await sh(`cat /etc/resolv.conf; echo "proxy=$HTTPS_PROXY"; test -s /run/lyrica/certs/bundle.pem && echo BUNDLE
+      curl -s -o /dev/null -w '%{http_code}\\n' --noproxy '' --proxy "$HTTP_PROXY" http://127.0.0.1:${port}/
+      (exec 3<>/dev/tcp/1.1.1.1/53 && echo REACHED) 2>/dev/null; true`, box({ internet: true, uploads: false }));
+    expect(r.out).toMatch(/^proxy=http:\/\/lyrica:[^@\s]+@127\.0\.0\.1:\d+$/m);
+    expect(r.out).toContain("BUNDLE");
+    if (has("curl")) expect(r.out).toMatch(/^403$/m);
+    expect(r.out).not.toMatch(/nameserver|REACHED|hello from the host/);
+  });
+
   it("writes in place, keeping the owner, when the folder won't take a temp file", async () => {
     mkdirSync(p("rw", "locked"));
     writeFileSync(p("rw", "locked", "f.txt"), "old");

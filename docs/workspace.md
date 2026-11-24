@@ -1617,6 +1617,7 @@ values are always visible next to the model badge:
 | **Models** | Which model handles each task: the main conversation, cheap and strong subagents, compaction and titles. This follows the thread's preset or the user's General / Private column unless overridden (see DESIGN.md, "Models and endpoints"). |
 | **Local-only** | Whether every model call stays on the custom endpoint. Always on in private threads. |
 | **Internet access for tools** | Whether `bash` and fetches inside the sandbox can reach the network. |
+| **Uploads** | With internet on, whether it may send as well as read ([Uploads](#uploads)). On unless turned off. |
 | **Folders** | The thread's grants, each read-only or read-write. |
 | **Machines** | The SSH accounts and Proxmox nodes the thread may use (Machines). |
 | **Repositories** | The repositories the thread clones, each with the Git account it uses (Git accounts and repositories). |
@@ -1628,8 +1629,10 @@ values are always visible next to the model badge:
 
 ## Network access from tools
 
-Every thread has two switches and a list:
+Every thread has three switches and a list:
 - **Internet:** anything off this machine.
+- **Uploads:** with internet on, whether it may send as well as read
+  ([below](#uploads)). On unless turned off.
 - **Local services (localhost)**: whatever listens on the host's loopback, TCP
   and UDP, or on the host's own addresses (except lyricad's front door).
 - **Allowed hosts:** IPs, CIDR ranges or hostnames (a URL is reduced to its
@@ -1640,7 +1643,7 @@ Every thread has two switches and a list:
 Each user has defaults per pool, and each thread can override them. General
 threads default to internet on, services off; private threads to everything
 off, because otherwise a `curl` could send private content out.
-`lyrica admin net show|set|hosts …` edits a user's defaults; per-thread
+`lyrica admin net show|set|hosts …` (`set … uploads on|off` too) edits a user's defaults; per-thread
 overrides go through `WorkspaceSettings.setThread` (the Web thread's UI).
 
 How it is enforced:
@@ -1707,6 +1710,52 @@ How it is enforced:
   network to its machine alone, whatever the thread's switches say. If the
   self-test refuses network, machine calls fail too. Model calls come from
   `lyricad`, so local-only and the switches are independent.
+
+### Uploads
+
+With internet on and **Uploads** off (`Network.uploads` false), the
+sandbox's internet is its run's relay and nothing else (principle 2: the
+boundary is structural, so an injected instruction can't send a file or a
+form out). Such a run:
+- gets the internet switch off in its firewall and resolver (no DNS, no
+  direct connection out), with its relay's port forwarded in and the
+  allowed hosts as they are;
+- has `HTTPS_PROXY` and `HTTP_PROXY` (both cases) pointing at the relay,
+  `NO_PROXY` for loopback and the allowed hosts, `NODE_USE_ENV_PROXY`,
+  and `SSL_CERT_FILE`, `CURL_CA_BUNDLE`, `REQUESTS_CA_BUNDLE`, `PIP_CERT`,
+  `GIT_SSL_CAINFO` and `NIX_SSL_CERT_FILE` pointing at the system's
+  authorities followed by the run's (`/run/lyrica/certs/bundle.pem`;
+  `NODE_EXTRA_CA_CERTS` the run's alone) (`readOnlyEnv` in sandbox.ts);
+- gives Chromium (`web_fetch`'s render and `browse`) the relay as its
+  proxy and the key of the relay's host certificates
+  (`LYRICA_PROXY`, `LYRICA_PROXY_KEY`; `chromium-agent.cjs`), since
+  Chromium's own store ignores the system's.
+
+The relay (`readOnlyInternet` in relay.ts) ends TLS for any host with the
+run's authority, as it does for a Git host, and passes on only a GET,
+HEAD or OPTIONS with no body, and a git fetch's `git-upload-pack` POST
+(its body held to 1 MiB), with no method override or upgrade; anything
+else gets 403 and "Uploads are off in this conversation…". It looks the
+name up itself (IPv4) and goes to that address, refusing this machine's
+own addresses, loopback and the front door's, as the firewall does, so a
+name can't be pointed back at the server. A plain-http request through
+it as a proxy is held to the same. A request carrying a repository's
+credential (git, gh, tea through the capability) may still write, but
+only to that repository: its Git paths and its own REST API
+(`ownRepository`), plus GraphQL queries and gh's `createPullRequest`
+(which the relay can't pin to a repository); another repository's
+issue, a gist or any other mutation is refused. The web path needs no
+capability, because Chromium can't send one: no other sandbox can reach
+a relay's port, since every run's firewall and pasta exclude the ports of
+all relays open then but its own (`relayPorts`).
+
+What it doesn't stop: a GET's address, header or a DNS-free name can
+still carry a little text out, so Uploads off stops bulk uploads, not
+every leak. A page the thread made and the person opens (the file
+viewer, an artifact) runs as with internet off, since the person's
+browser can't be held to reading. Tools that ignore proxy variables
+(`ssh`, raw sockets) have no internet. Codex's own sandbox for ChatGPT
+Images and a machine's commands don't follow the switch.
 
 ## Web
 

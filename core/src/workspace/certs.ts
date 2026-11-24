@@ -64,8 +64,12 @@ function ipv6(raw: string): Buffer {
 
 const keyPair = () => generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 
-/** A run's certificate authority. `cert` is what the run trusts; `issue` makes a host's certificate and key. */
-export function makeAuthority(): { cert: string; issue(host: string): { cert: string; key: string } } {
+/**
+ * A run's certificate authority. `cert` is what the run trusts; `issue` makes a host's certificate and key; `leafKey`
+ * is the SHA-256 of the one key every host's certificate shares, in base64, as Chromium's
+ * --ignore-certificate-errors-spki-list takes it (its own store ignores the system's authorities).
+ */
+export function makeAuthority(): { cert: string; leafKey: string; issue(host: string): { cert: string; key: string } } {
   const ca = keyPair();
   const caSpki = ca.publicKey.export({ type: "spki", format: "der" });
   const caId = keyId(caSpki);
@@ -84,6 +88,7 @@ export function makeAuthority(): { cert: string; issue(host: string): { cert: st
   const key = leaf.privateKey.export({ type: "pkcs8", format: "pem" }) as string;
   return {
     cert,
+    leafKey: createHash("sha256").update(leafSpki).digest("base64"),
     issue(host) {
       const ip = isIP(host) === 4 ? Buffer.from(host.split(".").map(Number)) : isIP(host) === 6 ? ipv6(host) : undefined;
       return {

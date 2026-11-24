@@ -245,6 +245,8 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
             onChange={(v) => change({ localOnly: v })} />
           <NetSwitch label="Internet" hint="For her commands and fetches." value={settings.internet} effective={settings.network.internet}
             onChange={(v) => change({ internet: v })} />
+          <NetSwitch label="Uploads" hint="Off: her commands, fetches and browser can only read from the internet, not send files or forms. A web address can still carry a little text." value={settings.uploads ?? null} effective={settings.network.uploads !== false}
+            disabled={!settings.network.internet} onChange={(v) => change({ uploads: v })} />
           <NetSwitch label="Local services (localhost)" hint={`Programs running on ${her()}'s own server, such as a database. Never ${her()}'s own page.`} value={settings.services} effective={settings.network.services}
             onChange={(v) => change({ services: v })} />
           <Hosts hosts={settings.hosts ?? settings.network.hosts} overridden={settings.hosts !== null} onChange={(hosts) => change({ hosts })} />
@@ -405,13 +407,13 @@ function VoicePick({ userId, model, allowed, read, onModel }: {
 }
 
 /** A network switch: the thread's override, or the default for its pool. */
-function NetSwitch({ label, hint, value, effective, onChange }: {
-  label: string; hint: string; value: boolean | null; effective: boolean; onChange: (v: boolean | null) => void;
+function NetSwitch({ label, hint, value, effective, disabled, onChange }: {
+  label: string; hint: string; value: boolean | null; effective: boolean; disabled?: boolean; onChange: (v: boolean | null) => void;
 }) {
   return (
     <div className="net-switch">
-      <Switch label={label} hint={value === null ? `${hint} Following your default.` : hint} checked={value ?? effective} onChange={onChange} />
-      {value !== null && <button type="button" className="quiet small" onClick={() => onChange(null)}>Use default</button>}
+      <Switch label={label} hint={value === null ? `${hint} Following your default.` : hint} checked={value ?? effective} disabled={disabled} onChange={onChange} />
+      {value !== null && !disabled && <button type="button" className="quiet small" onClick={() => onChange(null)}>Use default</button>}
     </div>
   );
 }
