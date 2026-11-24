@@ -174,3 +174,19 @@ describe("SearXNG's way out and the tunnel's login", () => {
     }
   });
 });
+
+describe("the tunnel's wireproxy", () => {
+  it("without wireproxy installed, says so and leaves lyricad's file work running", async () => {
+    const { Mullvad } = await import("../src/index.ts");
+    const { readFile } = await import("node:fs/promises");
+    const m = new Mullvad({ binary: "/nonexistent/wireproxy" });
+    try {
+      // Each start used to hold one of libuv's four threads in a blocking open of the FIFO: five would hang fs for good.
+      for (let i = 0; i < 5; i++) await m.configure(parseWireGuard(MULLVAD));
+      await expect(readFile(import.meta.filename, "utf8")).resolves.toContain("wireproxy");
+      expect(await m.status()).toMatchObject({ state: "failed", reason: "wireproxy isn't installed on this machine." });
+    } finally {
+      m.stop();
+    }
+  }, 20_000);
+});

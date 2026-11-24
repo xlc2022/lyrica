@@ -11,7 +11,8 @@
 // for SearXNG: through Mullvad while Administration's switch is on, direct
 // otherwise, so the switch needs no restart of SearXNG.
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
+import { constants, mkdtempSync, rmSync } from "node:fs";
+import { open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -296,27 +297,49 @@ export class Mullvad {
     let last = "";
     // wireproxy's log holds no traffic, only the tunnel's own events; its last line is kept as the reason it stopped.
     child.stderr!.setEncoding("utf8").on("data", (c: string) => { last = (last + c).slice(-2000); });
-    child.on("error", (err) => { this.reason = /ENOENT/.test(String(err)) ? "wireproxy isn't installed on this machine." : err.message; });
-    child.on("exit", (code) => {
+    // A child that never started (no binary) reports only `error`; one that did reports `exit`. Either ends it once.
+    let over = false;
+    const ended = (why: string | undefined, code: number | null) => {
+      if (over) return;
+      over = true;
       gone();
       if (this.child !== child) return;
       this.child = undefined;
       this.state = "failed";
-      this.reason ??= `wireproxy stopped (${code ?? "signal"}): ${last.trim().split("\n").at(-1)?.replace(/^\S+ \S+ /, "") ?? ""}`.trim();
+      this.reason ??= why ?? `wireproxy stopped (${code ?? "signal"}): ${last.trim().split("\n").at(-1)?.replace(/^\S+ \S+ /, "") ?? ""}`.trim();
       this.opts.log?.(`Mullvad: ${this.reason}`);
       if (generation !== this.generation) return;
       this.restart = setTimeout(() => { this.reason = undefined; this.state = "connecting"; void this.start(); }, this.backoff);
       this.backoff = Math.min(this.backoff * 2, 60_000);
-    });
-    // Opening the FIFO waits for wireproxy to open it; once it has read the text the folder goes.
-    const out = createWriteStream(fifo);
-    out.on("error", () => { /* it exited first; the exit says why */ });
-    out.end(wireproxyConfig(this.conf, this.socks), gone);
+    };
+    child.on("error", (err) => ended(/ENOENT/.test(String(err)) ? "wireproxy isn't installed on this machine." : err.message, null));
+    child.on("exit", (code) => ended(undefined, code));
+    // A blocking open of the FIFO would hold one of libuv's four threads until a reader came, for good if wireproxy
+    // never does: it is opened without blocking, tried again until wireproxy has it open, and given up if it ends.
+    const fed = await this.feed(fifo, wireproxyConfig(this.conf, this.socks), () => over || this.child !== child);
+    gone();
+    // One that never opened it waits for ever: stopping it lets its exit say so and try again.
+    if (!fed && this.child === child) { this.reason = "wireproxy didn't read its configuration."; child.kill("SIGTERM"); return; }
     // Started: wait for the SOCKS listener, then say connected once the check agrees.
     for (let i = 0; i < 50 && this.child === child; i++) {
       if (await listening(port)) { this.backoff = 2_000; void this.status(true); return; }
       await new Promise((r) => setTimeout(r, 100));
     }
+  }
+
+  private async feed(fifo: string, text: string, ended: () => boolean): Promise<boolean> {
+    for (let tries = 0; tries < 100 && !ended(); tries++) {
+      try {
+        const f = await open(fifo, constants.O_WRONLY | constants.O_NONBLOCK);
+        // The text is far below a pipe's 64 KiB, so one write goes in whole.
+        try { await f.write(text); } finally { await f.close(); }
+        return true;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENXIO") return false;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+    return false;
   }
 
   /** Stops wireproxy; dials fail until a configuration is set again. */
@@ -352,6 +375,9 @@ function listening(port: number): Promise<boolean> {
 export function egress(route: () => Dialer | undefined, port = EGRESS_PORT, host = "127.0.0.1"): Promise<Server> {
   const server = createServer((client) => {
     client.on("error", () => client.destroy());
+    // A client that never finishes its greeting doesn't keep a socket.
+    const idle = setTimeout(() => client.destroy(), 15_000);
+    client.on("close", () => clearTimeout(idle));
     client.pause();
     void (async () => {
       const [v, n] = await read(client, 2);
@@ -377,6 +403,7 @@ export function egress(route: () => Dialer | undefined, port = EGRESS_PORT, host
       }
       up.on("error", () => client.destroy());
       client.on("close", () => up.destroy());
+      clearTimeout(idle);
       client.write(Buffer.from([5, 0, 0, 1, 0, 0, 0, 0, 0, 0]));
       up.pipe(client).pipe(up);
       client.resume();

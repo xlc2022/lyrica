@@ -133,7 +133,7 @@ function throughMullvad(dial: Dialer, host: string, port: number, secure: boolea
     dial(host, port).then((raw) => {
       if (!secure) return cb(null, raw);
       const { ca } = o as tls.ConnectionOptions;
-      cb(null, tls.connect({ socket: raw, ca, ...(isIP(host) ? {} : { servername: host }) }));
+      cb(null, tls.connect({ socket: raw, ca, host, ...(isIP(host) ? {} : { servername: host }) }));
     }, (err: Error) => cb(err, undefined as never));
     return undefined;
   };
