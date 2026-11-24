@@ -355,14 +355,33 @@ export function mp4Video(b: Buffer): { width: number; height: number; frames: nu
     if (!tkhd || tkhd[1] - tkhd[0] < (b[tkhd[0]] === 1 ? 96 : 84) || !mdhd || mdhd[1] - mdhd[0] < (v1 ? 32 : 24) || !stts || stts[1] - stts[0] < 8) return null;
     const scale = b.readUInt32BE(mdhd[0] + (v1 ? 20 : 12));
     const length = v1 ? Number(b.readBigUInt64BE(mdhd[0] + 24)) : b.readUInt32BE(mdhd[0] + 16);
-    let frames = 0;
+    // The time-to-sample table: runs of frames, each run's frames lasting the same number of ticks.
+    const runs: [count: number, ticks: number][] = [];
     const entries = b.readUInt32BE(stts[0] + 4);
-    for (let i = 0; i < entries && stts[0] + 16 + i * 8 <= stts[1]; i++) frames += b.readUInt32BE(stts[0] + 8 + i * 8);
+    for (let i = 0; i < entries && stts[0] + 16 + i * 8 <= stts[1]; i++) runs.push([b.readUInt32BE(stts[0] + 8 + i * 8), b.readUInt32BE(stts[0] + 12 + i * 8)]);
+    const frames = runs.reduce((n, [count]) => n + count, 0);
     if (!scale || !length || !frames) return null;
     // Width and height are 16.16 fixed point, the header's last eight bytes.
-    return { width: b.readUInt32BE(tkhd[1] - 8) >>> 16, height: b.readUInt32BE(tkhd[1] - 4) >>> 16, frames, fps: frames * scale / length };
+    return { width: b.readUInt32BE(tkhd[1] - 8) >>> 16, height: b.readUInt32BE(tkhd[1] - 4) >>> 16, frames, fps: frameRate(runs, scale) ?? frames * scale / length };
   }
   return null;
+}
+
+/**
+ * A track's frame rate from its frame durations: the mean of those near the median one. A joined clip can hold a
+ * longer frame where two clips meet (the first clip's sound ran past its picture), which a clip's length over its
+ * frame count would spread over every frame: 125 frames at 24 fps with one frame held twice read as 23.81 fps.
+ * Durations that alternate by a tick (41 and 42 ms in a millisecond time scale) still average to the true rate.
+ */
+function frameRate(runs: [count: number, ticks: number][], scale: number): number | null {
+  const sorted = runs.filter(([count, ticks]) => count > 0 && ticks > 0).sort((x, y) => x[1] - y[1]);
+  const total = sorted.reduce((n, [count]) => n + count, 0);
+  let seen = 0;
+  const median = sorted.find(([count]) => (seen += count) * 2 >= total)?.[1];
+  if (!median) return null;
+  let count = 0, ticks = 0;
+  for (const [n, t] of sorted) if (t >= median * 0.75 && t <= median * 1.25) { count += n; ticks += n * t; }
+  return count * scale / ticks;
 }
 
 /** Whether an MP4 has a sound track (a `trak` whose handler is `soun`). */
