@@ -19,26 +19,42 @@ function source(tool: string, input: Record<string, unknown>): { from: string; k
   return mcp ? { from: `the MCP server ${mcp[1]}'s ${mcp[2]}`, kind: "mcp" } : undefined;
 }
 
-/** The result with its first text block between the markers; Lyrica's own lines (a status, later blocks) stay outside them. */
-export function markOutside(tool: string, input: Record<string, unknown>, content: readonly { type: string; text?: string }[]) {
+/**
+ * The result with the outsider's text between the markers: every text block
+ * of an MCP answer (all of it is the server's), the first block of a command's
+ * output or a job's page. Lyrica's own lines stay outside: a job page's first
+ * line, later blocks of a command's result, and Pi's status line, which ends
+ * the output only when Pi marked the call failed (`isError`), so a command
+ * that prints a status-shaped line can't get it out.
+ */
+export function markOutside(tool: string, input: Record<string, unknown>, content: readonly { type: string; text?: string }[], isError = false) {
   const where = source(tool, input);
-  const i = content.findIndex((c) => c.type === "text");
-  const block = content[i];
-  if (!where || !block || typeof block.text !== "string") return undefined;
-  // A job's page starts with Lyrica's line about the job.
-  const head = tool === "jobs" ? block.text.slice(0, block.text.indexOf("\n") + 1) : "";
-  const status = STATUS.exec(block.text)?.[0] ?? "";
-  const body = block.text.slice(head.length, block.text.length - status.length);
-  if (!body.trim() || body.trim() === "(no output)") return undefined;
-  const text = `${head}${outside(where.from, body, where.kind)}${status}`;
-  return content.map((c, j) => (j === i ? { type: "text" as const, text } : c));
+  if (!where) return undefined;
+  const mark = (text: string, keepStatus: boolean) => {
+    // A job's page starts with Lyrica's line about the job.
+    const head = tool === "jobs" ? text.slice(0, text.indexOf("\n") + 1) : "";
+    const status = keepStatus ? STATUS.exec(text)?.[0] ?? "" : "";
+    const body = text.slice(head.length, text.length - status.length);
+    if (!body.trim() || body.trim() === "(no output)") return undefined;
+    return `${head}${outside(where.from, body, where.kind)}${status}`;
+  };
+  const first = content.findIndex((c) => c.type === "text");
+  let changed = false;
+  const out = content.map((c, j) => {
+    if (c.type !== "text" || typeof c.text !== "string" || (where.kind !== "mcp" && j !== first)) return c;
+    const text = mark(c.text, tool === "bash" && isError);
+    if (text === undefined) return c;
+    changed = true;
+    return { type: "text" as const, text };
+  });
+  return changed ? out : undefined;
 }
 
 /** Last in every session's extensions (session.ts). */
 export function createOutsideExtension(): ExtensionFactory {
   return (pi) => {
     pi.on("tool_result", (event) => {
-      const content = markOutside(event.toolName, (event.input ?? {}) as Record<string, unknown>, event.content as { type: string; text?: string }[]);
+      const content = markOutside(event.toolName, (event.input ?? {}) as Record<string, unknown>, event.content as { type: string; text?: string }[], !!event.isError);
       return content ? { content: content as typeof event.content } : undefined;
     });
   };

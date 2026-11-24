@@ -1839,11 +1839,13 @@ Text an outsider can shape reaches her between markers (principle 6):
 have shaped a result:
 - `bash` output, and a `jobs output` page after its first line, between
   `<<<output CODE>>>` and `<<<end output CODE>>>`, headed "Outside content
-  from the command's output" (or the job's id). A failed, stopped or
-  timed-out command's status line stays after the end marker, and so do
-  Lyrica's own notes in later blocks (what was saved before a command ran).
+  from the command's output" (or the job's id). Pi's status line of a
+  failed, stopped or timed-out `bash` call stays after the end marker
+  (only when Pi marked the call failed, so a status-shaped line a command
+  prints stays inside), and so do Lyrica's own notes in later blocks
+  (what was saved before a command ran).
   A background command's start line and "(no output)" aren't marked.
-- An MCP tool's answer, its first text block, between `<<<mcp CODE>>>` and
+- An MCP tool's answer, each of its text blocks, between `<<<mcp CODE>>>` and
   `<<<end mcp CODE>>>`, headed by the server and tool.
 
 CODE is 8 random hex digits per result, and marker-shaped text of any
