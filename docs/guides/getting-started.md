@@ -834,7 +834,8 @@ Administration, Users.
 Network defaults are per user and pool: general threads start with internet
 on and local services off, private threads with both off, and uploads on.
 Turning **Uploads** off lets her commands and browser only read from the
-internet, through Lyrica's own relay. Change
+internet, through Lyrica's own relay. Turning **Page reader** on (off by default) has
+another model read each page she fetches and give her only its answer. Change
 them under Settings, Network (below its "New threads" group, which holds
 the default mode and Fallback), or with `lyrica admin net`. Each
 thread can narrow or widen its own from the thread settings drawer.

@@ -1098,7 +1098,7 @@ describe.skipIf(!netRunnable)("the network self-test", () => {
 
     const broken = new Workspace(keyring, users, { excludePorts: [], pasta: "/nonexistent/pasta" });
     expect(await broken.selfTest()).toMatch(/didn't start/);
-    expect(broken.forThread(thread).network()).toEqual({ internet: false, services: false, hosts: [] });
+    expect(broken.forThread(thread).network()).toEqual({ internet: false, services: false, hosts: [], pageReader: false });
   });
 });
 

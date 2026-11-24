@@ -806,7 +806,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/network`, (r) => networkDefaults(d, d.userFor(r).id)),
     route("PATCH", `${u}/network/:pool`, async (r) => {
       const user = d.userFor(r);
-      const change = pick(await r.json<Api.NetworkChange>(), ["internet", "services", "hosts", "uploads"]);
+      const change = pick(await r.json<Api.NetworkChange>(), ["internet", "services", "hosts", "uploads", "pageReader"]);
       s().workspace.settings(user.id).setDefaultNetwork(poolOf(r), change);
       return networkDefaults(d, user.id);
     }),
@@ -3240,7 +3240,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     ...(answered ? { answered } : {}),
     ...(threadId ? contextOf(d, user, pool, threadId, answered) ?? {} : {}),
     code: applies.code, localOnly: ctx.localOnly,
-    internet: tw.internet, services: tw.services, hosts: tw.hosts, uploads: tw.uploads ?? null,
+    internet: tw.internet, services: tw.services, hosts: tw.hosts, uploads: tw.uploads ?? null, pageReader: tw.pageReader ?? null,
     network: workspace.network({ userId: user.id, pool, threadId }),
     grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mcpServers: applies.mcpServers, mode: applies.mode, bypassAllowed: workspace.settings(user.id).bypassAllowed(), webSearch: applies.webSearch,
     searchProvider: !!(searxngAddress(d.keyring.self()) || kiwixAddress(d.keyring.self())), images: applies.images, unlogged: isUnlogged, parent: tw.parent,
@@ -3262,7 +3262,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
  */
 const sendsOut = (net: { internet: boolean; uploads?: boolean }) => net.internet && net.uploads !== false;
 
-const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "uploads", "mode", "code", "evidence", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
+const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "uploads", "pageReader", "mode", "code", "evidence", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
 
 /** A thread's subagents and child threads, and theirs, hidden ones included. */
 function descendants(d: Lyricad, user: User, pool: Pool, threadId: string): string[] {

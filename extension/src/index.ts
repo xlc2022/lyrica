@@ -47,6 +47,7 @@ export * from "./vision.ts";
 export * from "./exit-codes.ts";
 export * from "./test-output.ts";
 export * from "./web.ts";
+export * from "./reader.ts";
 export * from "./workspace.ts";
 
 export interface ThreadContext {
