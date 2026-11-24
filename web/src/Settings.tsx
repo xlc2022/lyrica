@@ -245,7 +245,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
             onChange={(v) => change({ localOnly: v })} />
           <NetSwitch label="Internet" hint="For her commands and fetches." value={settings.internet} effective={settings.network.internet}
             onChange={(v) => change({ internet: v })} />
-          <NetSwitch label="Uploads" hint="Off: her commands, fetches and browser can only read from the internet, not send files or forms. A web address can still carry a little text." value={settings.uploads ?? null} effective={settings.network.uploads !== false}
+          <NetSwitch label="Uploads" hint={`Off: her commands, fetches and browser can only read from the internet, not send files or forms. A web address can still carry a little text.${settings.network.internet ? "" : " Needs Internet."}`} value={settings.uploads ?? null} effective={settings.network.uploads !== false}
             disabled={!settings.network.internet} onChange={(v) => change({ uploads: v })} />
           <NetSwitch label="Local services (localhost)" hint={`Programs running on ${her()}'s own server, such as a database. Never ${her()}'s own page.`} value={settings.services} effective={settings.network.services}
             onChange={(v) => change({ services: v })} />

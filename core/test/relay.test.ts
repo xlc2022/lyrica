@@ -422,7 +422,7 @@ describe("Claude Code's usage through the relay", () => {
 describe("a run's relay with uploads off", () => {
   const readOnly = () => openRelay({
     forge: [credential({})], reaches: () => true, internet: true,
-    upstreams: { "github.com": base, "api.github.com": base, "example.com": base, "example.org": base },
+    upstreams: { "github.com": base, "api.github.com": base, "example.com": base, "example.org": base, "codeberg.org": base },
     readOnlyInternet: { refused: (a) => a.startsWith("127.") },
   });
   /** A plain http request through the relay as a proxy (an absolute URL). */
@@ -448,6 +448,12 @@ describe("a run's relay with uploads off", () => {
       expect(await plainThrough(relay, "http://example.org/a", "POST")).toBe(403);
       // This machine is never reached, by name or address.
       expect((await through(relay, "127.0.0.1:7340", "/")).status).toBe(403);
+      // Nor by IPv6, which the sandbox doesn't have: a mapped address is this machine's IPv4 loopback.
+      for (const to of ["[::1]:7340", "[::ffff:127.0.0.1]:7340", "[::ffff:7f00:1]:7340"]) expect(await plainThrough(relay, `http://${to}/`)).toBe(403);
+      // A git fetch's body goes only to a forge, which reads it as wants and haves, never to any other host.
+      const pack = { "content-type": "application/x-git-upload-pack-request" };
+      expect((await postThrough(relay, "codeberg.org", "/a/b.git/git-upload-pack", "", "0000", pack)).status).toBe(401); // the forge itself answers
+      expect(await postThrough(relay, "example.com", "/x/git-upload-pack", "", "A".repeat(5000), pack)).toEqual({ status: 403, body: UPLOADS_OFF });
       expect(seen.map((x) => x.url)).toEqual(["/page", "/a"]);
     } finally {
       relay.close();

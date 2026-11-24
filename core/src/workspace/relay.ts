@@ -121,7 +121,7 @@ function tunnelTo(host: string, port: number, secure: boolean, mayResolveInto: b
 
 /** host:port as a CONNECT names it, without :443. */
 const target = (hostPort: string) => hostPort.toLowerCase().replace(/:443$/, "");
-const hostname = (t: string) => t.replace(/^\[(.*)\](:\d+)?$/, "$1").replace(/:\d+$/, "");
+const hostname = (t: string) => /^\[([^\]]*)\](?::\d+)?$/.exec(t)?.[1] ?? t.replace(/:\d+$/, "");
 
 /** Whether a path, decoded as a server would, stays where it starts: no `.` or `..` segment, no `//`. */
 function plain(path: string): boolean {
@@ -330,6 +330,12 @@ export const relayPorts = (): number[] => [...live];
 const READS = new Set(["GET", "HEAD", "OPTIONS"]);
 /** A git fetch's request: wants and haves, refused past this. */
 export const UPLOAD_PACK_LIMIT = 1024 * 1024;
+/**
+ * Where a git fetch's POST may go with uploads off, besides the hosts of the run's own Git credentials: forges whose
+ * upload-pack endpoint reads the body as wants and haves, so a third party can't collect it there. Anywhere else the
+ * body would be an upload channel (object ids are free-form hex), so a clone from another host uses the dumb protocol.
+ */
+export const PACK_HOSTS: readonly string[] = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"];
 export const UPLOADS_OFF = "Uploads are off in this conversation: only GET, HEAD and OPTIONS requests (and a git fetch) reach the internet.\n";
 
 /**
@@ -537,8 +543,8 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
    */
   const outbound = (to: string, secure: boolean, path: string, req: IncomingMessage, res: ServerResponse) => {
     const kind = readOnlyRequest(req.method, path, req.headers);
-    if (kind === "no") return refuse(req, res, 403, UPLOADS_OFF);
     const host = hostname(to);
+    if (kind === "no" || (kind === "upload-pack" && !PACK_HOSTS.includes(host.toLowerCase()) && !forge.some((c) => c.host.toLowerCase() === host.toLowerCase()))) return refuse(req, res, 403, UPLOADS_OFF);
     const port = Number(/^(?:\[[^\]]*\]|[^:]*):(\d+)$/.exec(to)?.[1] ?? (secure ? 443 : 80));
     const base = spec.upstreams?.[to] ? new URL(spec.upstreams[to]!) : undefined;
     const go = (address: string, p: number, tls: boolean) => {
@@ -559,6 +565,8 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     };
     if (base) return go(hostname(base.host), Number(base.port) || (base.protocol === "https:" ? 443 : 80), base.protocol === "https:");
     (isIP(host) ? Promise.resolve([host]) : lookup(host, { all: true, family: 4 }).then((a) => a.map((x) => x.address))).then((addresses) => {
+      // IPv4 only, as the sandbox is: an IPv6 literal (::1, ::ffff:127.0.0.1) could reach this machine's loopback.
+      if (addresses.some((a) => isIP(a) !== 4)) return refuse(req, res, 403, `${host} is an IPv6 address; with uploads off the internet is reached over IPv4 only.\n`);
       const address = addresses.find((a) => !readOnly!.refused(a));
       if (!address) return refuse(req, res, 403, `${host} is this machine, which the internet switch never reaches.\n`);
       go(address, port, secure);

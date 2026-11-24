@@ -8,7 +8,7 @@
 const AGENT_FLAGS = ["--disable-blink-features=AutomationControlled",
   // Uploads off (sandbox.ts): the internet only through the run's relay, whose certificates Chromium's own store
   // doesn't know, so it is told their one key.
-  ...(process.env.LYRICA_PROXY ? [`--proxy-server=${process.env.LYRICA_PROXY}`, `--ignore-certificate-errors-spki-list=${process.env.LYRICA_PROXY_KEY}`] : [])];
+  ...(process.env?.LYRICA_PROXY ? [`--proxy-server=${process.env.LYRICA_PROXY}`, `--ignore-certificate-errors-spki-list=${process.env.LYRICA_PROXY_KEY}`] : [])];
 /** The Network.setUserAgentOverride parameters, from the browser's own Browser.getVersion. */
 function desktopAgent({ product, userAgent }) {
   const full = String(product).split("/")[1] ?? "";

@@ -1734,9 +1734,13 @@ form out). Such a run:
 The relay (`readOnlyInternet` in relay.ts) ends TLS for any host with the
 run's authority, as it does for a Git host, and passes on only a GET,
 HEAD or OPTIONS with no body, and a git fetch's `git-upload-pack` POST
-(its body held to 1 MiB), with no method override or upgrade; anything
+(its body held to 1 MiB) to a host of the run's Git accounts or a forge
+in `PACK_HOSTS` (github.com, gitlab.com, codeberg.org, bitbucket.org),
+whose endpoint reads it as wants and haves, with no method override or
+upgrade; anything
 else gets 403 and "Uploads are off in this conversation…". It looks the
-name up itself (IPv4) and goes to that address, refusing this machine's
+name up itself (IPv4) and goes to that address, refuses an IPv6 address
+(a mapped one would be this machine's loopback), refusing this machine's
 own addresses, loopback and the front door's, as the firewall does, so a
 name can't be pointed back at the server. A plain-http request through
 it as a proxy is held to the same. A request carrying a repository's
@@ -1749,9 +1753,10 @@ capability, because Chromium can't send one: no other sandbox can reach
 a relay's port, since every run's firewall and pasta exclude the ports of
 all relays open then but its own (`relayPorts`).
 
-What it doesn't stop: a GET's address, header or a DNS-free name can
-still carry a little text out, so Uploads off stops bulk uploads, not
-every leak. A page the thread made and the person opens (the file
+What it doesn't stop: a request's URL and headers (up to Node's 16 KiB)
+can still carry a little text out, so Uploads off stops bulk uploads, not
+every leak. The allowed hosts are reached directly, as with uploads on,
+so one on the internet can still be sent to. A page the thread made and the person opens (the file
 viewer, an artifact) runs as with internet off, since the person's
 browser can't be held to reading. Tools that ignore proxy variables
 (`ssh`, raw sockets) have no internet. Codex's own sandbox for ChatGPT

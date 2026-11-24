@@ -51,7 +51,7 @@ describe("project welcome encrypted state", () => {
       expect(s.view.own.getThread(child.id)).toMatchObject({ parent: project.id, child: true });
       expect(s.view.own.steps(child.id)).toEqual(steps);
       expect(s.view.own.wakeups(child.id)).toEqual([expect.objectContaining({ id: wake })]);
-      expect(s.ws.network(source.id, "general")).toEqual({ internet: false, services: false, hosts: [] });
+      expect(s.ws.network(source.id, "general")).toEqual({ internet: false, services: false, hosts: [], uploads: true });
       expect(() => s.view.own.foldThread(project.id, child.id)).toThrow(/top-level/);
     } finally { s.close(); }
   });
