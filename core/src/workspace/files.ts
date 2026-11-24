@@ -385,7 +385,10 @@ export class ThreadFiles {
       'cat > "$d/b.mp4" && ln -s -- "$1" "$d/a.mp4" || exit 1; ' +
       'h() { ffprobe -v error -show_data_hash sha256 -show_entries stream=codec_type,codec_name,profile,width,height,pix_fmt,r_frame_rate,sample_rate,channels,extradata_hash -of csv=p=0 "file:$1"; }; ' +
       'has() { ffprobe -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "file:$1" | grep -q .; }; ' +
-      'if [ "$(h "$d/a.mp4")" = "$(h "$d/b.mp4")" ]; then printf "file a.mp4\\nfile b.mp4\\n" > "$d/l" && ffmpeg -v error -nostdin -f concat -safe 0 -i "$d/l" -c copy -movflags +faststart "$d/o.mp4" || exit 1; ' +
+      // The clip so far ends where its picture does: its sound can run a frame or so longer, and the next clip's
+      // frames would start after that, a held frame at every join that read as 23.8 fps after a few.
+      'e=$(ffprobe -v error -select_streams v:0 -show_entries stream=start_time,duration -of csv=p=0 "file:$d/a.mp4" | awk -F, \'$2 + 0 > 0 { print $1 + $2 }\'); ' +
+      'if [ "$(h "$d/a.mp4")" = "$(h "$d/b.mp4")" ]; then { echo "file a.mp4"; [ -z "$e" ] || echo "outpoint $e"; echo "file b.mp4"; } > "$d/l" && ffmpeg -v error -nostdin -f concat -safe 0 -i "$d/l" -c copy -movflags +faststart "$d/o.mp4" || exit 1; ' +
       'elif has "$d/a.mp4" && has "$d/b.mp4"; then ffmpeg -v error -nostdin -i "file:$d/a.mp4" -i "file:$d/b.mp4" -filter_complex "[0:v:0][0:a:0][1:v:0][1:a:0]concat=n=2:v=1:a=1[v][a]" -map "[v]" -map "[a]" -c:v libx264 -crf 18 -pix_fmt yuv420p -c:a aac -movflags +faststart "$d/o.mp4" || exit 1; ' +
       'else ffmpeg -v error -nostdin -i "file:$d/a.mp4" -i "file:$d/b.mp4" -filter_complex "[0:v:0][1:v:0]concat=n=2:v=1:a=0[v]" -map "[v]" -c:v libx264 -crf 18 -pix_fmt yuv420p -movflags +faststart "$d/o.mp4" || exit 1; fi; ' +
       // What the joined clip is, on stderr's last line after any warning.

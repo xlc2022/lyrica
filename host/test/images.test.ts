@@ -80,8 +80,11 @@ function mp4(seconds: number, version: 0 | 1 = 0): Buffer {
   }
   return Buffer.concat([box("ftyp", Buffer.from("isom\0\0\x02\0", "latin1")), box("mdat", Buffer.alloc(64)), box("moov", box("mvhd", mvhd))]);
 }
-/** A clip with a video track: its size, frame count and frame rate in tkhd, mdhd and stts, as an encoder writes them; `pad` bytes of mdat make it as large as a real one. */
-function clip(width: number, height: number, frames: number, fps: number, pad = 0): Buffer {
+/**
+ * A clip with a video track: its size, frame count and frame rate in tkhd, mdhd and stts, as an encoder writes them;
+ * `pad` bytes of mdat make it as large as a real one. `runs` gives stts's runs of [frames, ticks] (512 ticks a frame).
+ */
+function clip(width: number, height: number, frames: number, fps: number, pad = 0, runs: [number, number][] = [[frames, 512]]): Buffer {
   const box = (type: string, ...body: Buffer[]) => {
     const head = Buffer.alloc(8);
     head.writeUInt32BE(8 + body.reduce((n, b) => n + b.length, 0), 0);
@@ -93,12 +96,11 @@ function clip(width: number, height: number, frames: number, fps: number, pad = 
   tkhd.writeUInt32BE(height << 16, 80);
   const mdhd = Buffer.alloc(24);
   mdhd.writeUInt32BE(fps * 512, 12);
-  mdhd.writeUInt32BE(frames * 512, 16);
+  mdhd.writeUInt32BE(runs.reduce((n, [count, ticks]) => n + count * ticks, 0), 16);
   const hdlr = (kind: string) => { const b = Buffer.alloc(24); b.write(kind, 8, "latin1"); return b; };
-  const stts = Buffer.alloc(16);
-  stts.writeUInt32BE(1, 4);
-  stts.writeUInt32BE(frames, 8);
-  stts.writeUInt32BE(512, 12);
+  const stts = Buffer.alloc(8 + runs.length * 8);
+  stts.writeUInt32BE(runs.length, 4);
+  runs.forEach(([count, ticks], i) => { stts.writeUInt32BE(count, 8 + i * 8); stts.writeUInt32BE(ticks, 12 + i * 8); });
   const sound = box("trak", box("tkhd", Buffer.alloc(84)), box("mdia", box("mdhd", Buffer.alloc(24)), box("hdlr", hdlr("soun"))));
   const video = box("trak", box("tkhd", tkhd), box("mdia", box("mdhd", mdhd), box("hdlr", hdlr("vide")), box("minf", box("stbl", box("stts", stts)))));
   const mvhd = Buffer.alloc(100);
@@ -565,6 +567,10 @@ describe("long videos", () => {
   it("reads a clip's size, frame count and frame rate from its video track, and whether it has sound", () => {
     expect(mp4Video(clip(1344, 768, 192, 24))).toEqual({ width: 1344, height: 768, frames: 192, fps: 24 });
     expect(mp4Video(mp4(3))).toBeNull();
+    // Where two joined clips meet, a frame held twice as long: still 24 fps, not 125 frames over 126 frames' time.
+    expect(mp4Video(clip(1344, 768, 125, 24, 0, [[62, 512], [1, 1024], [62, 512]]))?.fps).toBe(24);
+    // Frame times alternating by a tick average to the true rate.
+    expect(mp4Video(clip(1344, 768, 120, 24, 0, [[40, 511], [40, 512], [40, 513]]))?.fps).toBe(24);
     expect([mp4Sound(clip(1344, 768, 192, 24)), mp4Sound(mp4(3))]).toEqual([true, false]);
     // A version 1 media header too short for its 64-bit duration is no clip, not an error.
     const v1 = clip(1344, 768, 192, 24);
