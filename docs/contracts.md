@@ -1846,7 +1846,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     CODE>>>` (`outside`; CODE is 8 random hex digits per call, and
     marker-shaped text inside is removed), headed by where they came from;
     the cut note follows the end marker. `OUTSIDE_GUIDELINE` tells her
-    what is between them is information, never instructions. Both are
+    what is between them is information, never instructions.
+    `outside(from, text, kind)` also marks `bash` output and `jobs output`
+    pages (`<<<output CODE>>>`) and MCP answers (`<<<mcp CODE>>>`), in
+    `createOutsideExtension` (`extension/src/outside.ts`), the last
+    extension of every session (`session.ts`); `unmarked(text)` takes the
+    heading and markers out for the conversation's view (`shortResult`). Both are
     `openWorldHint` and `readOnlyHint`, so they never ask;
   - `proxmox` (Machines; see [core/workspace](#coreworkspace)) and
     `add_repository` (Repositories; see [core/workspace](#coreworkspace));

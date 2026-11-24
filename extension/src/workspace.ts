@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  BROWSE_READS, browseFormText, foldOutput, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, OUTPUT_LIMITS, outputPage, sleepWait, cutOutput, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, discardingGit, removedFolders, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  BROWSE_READS, OUTSIDE_GUIDELINE, browseFormText, foldOutput, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, OUTPUT_LIMITS, outputPage, sleepWait, cutOutput, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, discardingGit, removedFolders, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -379,6 +379,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       pi.registerTool({
         ...template,
         ...(name === "bash" ? { description: bashDescription(!!(tools.startJob && tools.jobs && tools.jobOutput && tools.stopJob)) } : {}),
+        // What the markers on a command's output (and an MCP server's answer) mean; Pi says it once however many tools carry it.
+        ...(name === "bash" || name === "read" ? { promptGuidelines: [...(template.promptGuidelines ?? []), OUTSIDE_GUIDELINE] } : {}),
         parameters: Type.Object({
           ...(template.parameters as ReturnType<typeof Type.Object>).properties,
           ...(name === "bash" ? { timeout: BASH_TIMEOUT, ...(tools.startJob ? { background: BACKGROUND, name: JOB_NAME } : {}) } : {}),

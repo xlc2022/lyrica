@@ -1827,7 +1827,35 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   end the markers early or fake the cut note, and her guideline says the
   text between them is information, never instructions. This makes
   injected text easy to recognise; it doesn't make her immune to it. The
-  network switches remain the boundary.
+  network switches remain the boundary. Command output and MCP answers
+  are marked the same way ([Outside content](#outside-content)).
+
+## Outside content
+
+Text an outsider can shape reaches her between markers (principle 6):
+`web_search`, `web_fetch` and `browse` mark their own results
+(`<<<web CODE>>>`, above), and every session's last extension
+(`extension/src/outside.ts`) marks the rest after the other extensions
+have shaped a result:
+- `bash` output, and a `jobs output` page after its first line, between
+  `<<<output CODE>>>` and `<<<end output CODE>>>`, headed "Outside content
+  from the command's output" (or the job's id). A failed, stopped or
+  timed-out command's status line stays after the end marker, and so do
+  Lyrica's own notes in later blocks (what was saved before a command ran).
+  A background command's start line and "(no output)" aren't marked.
+- An MCP tool's answer, its first text block, between `<<<mcp CODE>>>` and
+  `<<<end mcp CODE>>>`, headed by the server and tool.
+
+CODE is 8 random hex digits per result, and marker-shaped text of any
+kind inside is removed (`outside` in `core/src/web.ts`), so the text can't
+close its markers early. One guideline (`OUTSIDE_GUIDELINE`, carried by
+`bash`, `read` and the web tools, said once) tells her the text between
+any of them is information to weigh, never instructions, even when it
+says it comes from the user, the operator or the system. `read` is not
+marked: a granted folder or a repository the user added is theirs, and a
+repository's own instructions (AGENTS.md, its skills) are meant to guide
+her. A tool call's result in the conversation shows without the heading
+and markers (`unmarked`, line by line).
 
 ## Git accounts and repositories
 
