@@ -17,6 +17,7 @@ import { createWebExtension, type WebTools } from "../web.ts";
 import { checkoutsOf, repoRules } from "../code-repositories.ts";
 import { createImageExtension } from "../images.ts";
 import { createLookExtension } from "../look.ts";
+import { createPageReader } from "../reader.ts";
 import { createSyntaxExtension } from "../syntax.ts";
 import { createWorkspaceExtension, type Approval, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
@@ -1215,7 +1216,10 @@ export class Delegation {
         // its own, under its own network, with a profile of its own: it has none of its parent's logins.
         const browses = role.tools.includes("browse") && !!tools.browser && !!sandboxTools().browser && sandboxHas("node");
         if (browses) closeBrowser = () => { void tools.browser!().close().catch(() => {}); };
+        // Its Page reader follows its own network (a child can't turn off its parent's), on its parent's model rules.
+        const reader = createPageReader({ models: this.o.models, threadId: child.id, call: () => lookContext(this.o.models.callContext(parent.user.id, parent.pool, child.id), this.parentCall(run)) });
         extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), botChecks: () => !!this.o.botChecks?.(), tally: (tool, refused) => this.o.tally?.(tool, refused), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node"),
+          reader: () => (tools.network().pageReader ? reader : undefined),
           ...(browses ? { browser: () => tools.browser!() } : {}) }));
         // Its parent's MCP servers, read live, so one taken from the parent goes from it too; its calls ask in both threads.
         if (tools.settings().mcpServers.length) {

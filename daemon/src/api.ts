@@ -46,8 +46,11 @@ export type Theme = "device" | "light" | "dark";
 export type PermissionMode = "bypass" | "auto" | "acceptEdits" | "ask" | "plan";
 /** The modes an approved plan can go ahead in. */
 export type GoAhead = "ask" | "acceptEdits" | "auto";
-/** `uploads` false: with internet on, commands, fetches and the browser can only read from it (docs/workspace.md, "Uploads"). */
-export interface Network { internet: boolean; services: boolean; hosts: string[]; uploads?: boolean }
+/**
+ * `uploads` false: with internet on, commands, fetches and the browser can only read from it (docs/workspace.md, "Uploads").
+ * `pageReader` true: web_fetch answers a question about the page through the Cheap subagents model ("Page reader").
+ */
+export interface Network { internet: boolean; services: boolean; hosts: string[]; uploads?: boolean; pageReader?: boolean }
 export interface Grant { path: string; writable: boolean }
 
 export interface ApiError { error: string }
@@ -1321,6 +1324,7 @@ export interface ThreadSettings {
   services: boolean | null;
   hosts: string[] | null;
   uploads: boolean | null;
+  pageReader: boolean | null;
   /** What applies now, defaults included. All off while the host's network self-test refuses network. */
   network: Network;
   /** The folders it may use: its own, less any an ancestor has since taken off, and read-only where an ancestor's is (`effective`). */
@@ -1384,6 +1388,7 @@ export interface ThreadSettingsChange {
   services?: boolean | null;
   hosts?: string[] | null;
   uploads?: boolean | null;
+  pageReader?: boolean | null;
   grants?: Grant[];
   /** Machines of the thread's pool; a branch takes a subset of its parent's. */
   machines?: string[];

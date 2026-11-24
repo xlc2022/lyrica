@@ -806,7 +806,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/network`, (r) => networkDefaults(d, d.userFor(r).id)),
     route("PATCH", `${u}/network/:pool`, async (r) => {
       const user = d.userFor(r);
-      const change = pick(await r.json<Api.NetworkChange>(), ["internet", "services", "hosts", "uploads"]);
+      const change = pick(await r.json<Api.NetworkChange>(), ["internet", "services", "hosts", "uploads", "pageReader"]);
       s().workspace.settings(user.id).setDefaultNetwork(poolOf(r), change);
       return networkDefaults(d, user.id);
     }),
@@ -3105,7 +3105,7 @@ async function detachThread(d: Lyricad, user: User, r: Request): Promise<Api.Thr
   await keepDaughterFiles(d, user, pool, id);
   if (s.host.busy(user.id, pool, id)) throw new HttpError(409, "this thread is working; stop it or wait for its turn to end");
   if (s.models.callContext(user.id, pool, parent).localOnly) s.models.setLocalOnly(user.id, pool, id, true);
-  s.workspace.settings(user.id).separate(id);
+  s.workspace.settings(user.id).separate(id, pool);
   owner(d, user, (o) => o[pool].detachThread(id));
   s.children.detach(user.id, pool, id);
   // Its next turn opens with the tools of a thread of its own; the parent's open view drops it from its children.
@@ -3240,7 +3240,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     ...(answered ? { answered } : {}),
     ...(threadId ? contextOf(d, user, pool, threadId, answered) ?? {} : {}),
     code: applies.code, localOnly: ctx.localOnly,
-    internet: tw.internet, services: tw.services, hosts: tw.hosts, uploads: tw.uploads ?? null,
+    internet: tw.internet, services: tw.services, hosts: tw.hosts, uploads: tw.uploads ?? null, pageReader: tw.pageReader ?? null,
     network: workspace.network({ userId: user.id, pool, threadId }),
     grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mcpServers: applies.mcpServers, mode: applies.mode, bypassAllowed: workspace.settings(user.id).bypassAllowed(), webSearch: applies.webSearch,
     searchProvider: !!(searxngAddress(d.keyring.self()) || kiwixAddress(d.keyring.self())), images: applies.images, unlogged: isUnlogged, parent: tw.parent,
@@ -3262,7 +3262,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
  */
 const sendsOut = (net: { internet: boolean; uploads?: boolean }) => net.internet && net.uploads !== false;
 
-const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "uploads", "mode", "code", "evidence", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
+const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "uploads", "pageReader", "mode", "code", "evidence", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
 
 /** A thread's subagents and child threads, and theirs, hidden ones included. */
 function descendants(d: Lyricad, user: User, pool: Pool, threadId: string): string[] {
@@ -3549,7 +3549,7 @@ async function deleteThread(d: Lyricad, user: User, pool: Pool, threadId: string
     s().prefs.forget(user.id, pool, doomed);
     s().projects.forget(user.id, pool, doomed);
     // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
-    for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
+    for (const id of kept) { s().workspace.settings(user.id).detach(id, pool); s().host.reload(user.id, pool, id); }
     step("files");
     // The thread is gone by now: a folder that can't go yet (the home locked meanwhile) is the nightly sweep's.
     try { await forgetThreadFiles(s(), user.id, pool, doomed); } catch (err) { d.log(`a forgotten thread's files are left to the sweep: ${(err as Error).name}`); }

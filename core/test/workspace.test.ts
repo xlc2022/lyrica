@@ -113,14 +113,14 @@ describe("grants", () => {
 
   it("follow each pool's network defaults unless the thread overrides them", async () => {
     const { settings } = await setup();
-    expect(settings.network("g1", "general")).toEqual({ internet: true, services: false, hosts: [], uploads: true });
-    expect(settings.network("p1", "private")).toEqual({ internet: false, services: false, hosts: [], uploads: true });
+    expect(settings.network("g1", "general")).toEqual({ internet: true, services: false, hosts: [], uploads: true, pageReader: false });
+    expect(settings.network("p1", "private")).toEqual({ internet: false, services: false, hosts: [], uploads: true, pageReader: false });
     settings.setThread("g1", "general", { internet: false, services: true });
     expect(settings.network("g1", "general")).toMatchObject({ internet: false, services: true });
     settings.setThread("p1", "private", { hosts: ["http://nas.lan:8080/api", "192.168.1.0/24"] });
     expect(settings.network("p1", "private").hosts).toEqual(["nas.lan:8080", "192.168.1.0/24"]);
     settings.setDefaultNetwork("private", { internet: true, hosts: ["nas.lan"] });
-    expect(settings.network("p2", "private")).toEqual({ internet: true, services: false, hosts: ["nas.lan"], uploads: true });
+    expect(settings.network("p2", "private")).toEqual({ internet: true, services: false, hosts: ["nas.lan"], uploads: true, pageReader: false });
     expect(() => settings.setThread("p1", "private", { hosts: ["not a host"] })).toThrow(/can't read host/);
     for (const all of ["0.0.0.0/0", "10.0.0.0/0", "0.0.0.0", "0.0.0.0:443", "255.255.255.255"]) {
       expect(() => settings.setThread("p1", "private", { hosts: [all] }), all).toThrow(/every address|isn't a host/);
@@ -142,6 +142,38 @@ describe("grants", () => {
     expect(() => settings.setDefaultNetwork("general", { uploads: "no" as never })).toThrow(/on or off/);
     settings.forgetThreads(["g1"]);
     expect(settings.thread("g1").uploads).toBeNull();
+  });
+
+  it("keep Page reader off unless the default or the thread turns it on, and a child never turns it off", async () => {
+    const { settings } = await setup();
+    expect(settings.network("g1", "general").pageReader).toBe(false);
+    settings.setDefaultNetwork("general", { pageReader: true });
+    expect(settings.network("g1", "general").pageReader).toBe(true);
+    settings.setThread("g1", "general", { pageReader: false });
+    expect(settings.network("g1", "general").pageReader).toBe(false);
+    expect(settings.inheritSettings("g2", "c1", "general")).toMatchObject({ pageReader: true });
+    expect(() => settings.inheritSettings("g2", "c2", "general", { pageReader: false })).toThrow(/Page reader on/);
+    // Turned on in a parent (or the default it follows) after its children were made, it covers them, and they keep working.
+    settings.setDefaultNetwork("general", { pageReader: false });
+    settings.inheritSettings("g3", "c3", "general");
+    expect(settings.network("c3", "general").pageReader).toBe(false);
+    settings.setThread("g3", "general", { pageReader: true });
+    expect(settings.network("c3", "general").pageReader).toBe(true);
+    expect(() => settings.checkInherited("c3", "general")).not.toThrow();
+    expect(() => settings.setThread("c3", "general", { pageReader: false })).toThrow(/Page reader on/);
+    settings.setThread("g3", "general", { pageReader: null });
+    settings.setDefaultNetwork("general", { pageReader: true });
+    expect(settings.network("c3", "general").pageReader).toBe(true);
+    // Leaving the family keeps it on, whether cut loose (separate) or kept when the parent goes (detach).
+    settings.setDefaultNetwork("general", { pageReader: false });
+    settings.setThread("g3", "general", { pageReader: true });
+    settings.inheritSettings("g3", "c4", "general");
+    settings.separate("c3", "general");
+    settings.detach("c4", "general");
+    expect(settings.network("c3", "general").pageReader).toBe(true);
+    expect(settings.network("c4", "general").pageReader).toBe(true);
+    settings.forgetThreads(["g1"]);
+    expect(settings.thread("g1").pageReader).toBeNull();
   });
 
   it("let a subagent have its parent's settings or stricter ones, never wider", async () => {

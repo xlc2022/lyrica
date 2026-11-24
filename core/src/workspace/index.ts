@@ -858,7 +858,7 @@ export class Workspace {
 
   /** What the thread's tools may reach: its settings, or nothing while the self-test has refused network. */
   network(t: WorkspaceThread): Network {
-    if (this.networkRefused) return { internet: false, services: false, hosts: [] };
+    if (this.networkRefused) return { internet: false, services: false, hosts: [], pageReader: this.settings(t.userId).network(t.threadId, t.pool).pageReader };
     return this.settings(t.userId).network(t.threadId, t.pool);
   }
 

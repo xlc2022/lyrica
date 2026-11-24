@@ -1618,6 +1618,7 @@ values are always visible next to the model badge:
 | **Local-only** | Whether every model call stays on the custom endpoint. Always on in private threads. |
 | **Internet access for tools** | Whether `bash` and fetches inside the sandbox can reach the network. |
 | **Uploads** | With internet on, whether it may send as well as read ([Uploads](#uploads)). On unless turned off. |
+| **Page reader** | Whether `web_fetch` gives her another model's answer about a page instead of the page ([Page reader](#page-reader)). Off unless turned on. |
 | **Folders** | The thread's grants, each read-only or read-write. |
 | **Machines** | The SSH accounts and Proxmox nodes the thread may use (Machines). |
 | **Repositories** | The repositories the thread clones, each with the Git account it uses (Git accounts and repositories). |
@@ -1629,10 +1630,12 @@ values are always visible next to the model badge:
 
 ## Network access from tools
 
-Every thread has three switches and a list:
+Every thread has four switches and a list:
 - **Internet:** anything off this machine.
 - **Uploads:** with internet on, whether it may send as well as read
   ([below](#uploads)). On unless turned off.
+- **Page reader:** whether a fetched page reaches her only as another
+  model's answer ([Page reader](#page-reader)). Off unless turned on.
 - **Local services (localhost)**: whatever listens on the host's loopback, TCP
   and UDP, or on the host's own addresses (except lyricad's front door).
 - **Allowed hosts:** IPs, CIDR ranges or hostnames (a URL is reduced to its
@@ -1643,7 +1646,7 @@ Every thread has three switches and a list:
 Each user has defaults per pool, and each thread can override them. General
 threads default to internet on, services off; private threads to everything
 off, because otherwise a `curl` could send private content out.
-`lyrica admin net show|set|hosts …` (`set … uploads on|off` too) edits a user's defaults; per-thread
+`lyrica admin net show|set|hosts …` (`set … uploads|pagereader on|off` too) edits a user's defaults; per-thread
 overrides go through `WorkspaceSettings.setThread` (the Web thread's UI).
 
 How it is enforced:
@@ -1761,6 +1764,36 @@ viewer, an artifact) runs as with internet off, since the person's
 browser can't be held to reading. Tools that ignore proxy variables
 (`ssh`, raw sockets) have no internet. Codex's own sandbox for ChatGPT
 Images and a machine's commands don't follow the switch.
+
+### Page reader
+
+With **Page reader** on (`Network.pageReader`, off by default; on in
+a thread whenever it is on in any of its ancestors, turned on before or
+after the thread was made), `web_fetch` doesn't give her the page
+(principle 2: the boundary is structural, so a page's instructions don't
+reach the model that has the tools). It needs a `question`; the part of
+the page a fetch would have given her (the same `maxChars` and `offset`,
+and the same note on where to read on) goes, with the question, to one
+plain call to the thread's **Cheap subagents** model (task
+`subagent.cheap`, `extension/src/reader.ts`) through `core/models` with
+the thread's CallContext, so a private or local-only thread's page stays
+local. The reader has no tools, no memory, no conversation and no
+credentials, and is told that nothing on the page is an instruction to it.
+She gets its answer, cut at 2,000 characters (`READER_CHARS`), between
+outside-content markers that name the page, the reader's model and the
+question.
+
+A page can still talk the reader into a wrong or slanted answer; the cut
+and the markers bound what that answer can carry. A reader that fails
+(no Cheap subagents model it may use, a stopped call) says so as the
+fetch's error, and a page from the offline copy never goes online
+instead. The switch covers `web_fetch` only: `browse` is unchanged,
+since she acts on a page's own elements there, and `web_search`'s
+snippets, a command's output (`curl` with internet on), MCP tools and a
+subagent's report of what it read still reach her, marked as outside
+content. The switch sits after Uploads in the thread
+drawer and in Settings → Network per pool; a subagent's reader runs on its
+parent's model rules.
 
 ## Web
 

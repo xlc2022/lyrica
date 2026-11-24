@@ -117,7 +117,7 @@ describe("lyricad's network self-test", () => {
     const ws = d.services!.workspace;
     expect(ws.networkRefused).toMatch(/networked sandbox didn't start/);
     expect(logs.some((l) => l.startsWith("network is off for every thread:"))).toBe(true);
-    expect(ws.network(thread(rt.ada.id))).toEqual({ internet: false, services: false, hosts: [] });
+    expect(ws.network(thread(rt.ada.id))).toEqual({ internet: false, services: false, hosts: [], pageReader: false });
   });
 
   it("leaves a thread's own network settings alone when it's skipped", async () => {

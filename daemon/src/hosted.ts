@@ -6,7 +6,7 @@ import {
   sandboxHas, sandboxTools, createTask, photosToCloud, type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, createSyntaxExtension, codeTaskText, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLookExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, type WebTools, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
+  BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, createSyntaxExtension, codeTaskText, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLookExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createPageReader, type WebTools, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
   GO_AHEAD, grantKey, MODE_LABELS, type Approval, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
   type ToneNote, type Tones,
 } from "@lyrica/extension";
@@ -1400,6 +1400,8 @@ export class HostedThread {
       const call = models.callContext(this.userId, this.pool, this.threadId);
       // A project chat coordinates: its folders and clones are read-only to it, and its threads make the changes.
       const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId, project: view.own.projectOf(this.threadId), coordinates: !!thread.project });
+      // Page reader: while the thread's switch is on, web_fetch answers through the thread's Cheap subagents model.
+      const reader = createPageReader({ models, threadId: this.threadId, call: () => models.callContext(this.userId, this.pool, this.threadId) });
       const ctx: ThreadContext = { user, pool: this.pool, interface: thread.interface, threadId: this.threadId, view, call };
       // delegate is offered where the depth limit allows; it attaches itself, so background results reach this session.
       const canDelegate = delegation.depth(ctx) < delegation.limits.depth;
@@ -1499,6 +1501,7 @@ export class HostedThread {
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
           // browse too: the thread's own browser, in a sandbox with its network and nothing else of the thread's. A project chat has it too (the owner, 2026-11-11); a subagent's is its own (delegate/runs.ts).
           createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), botChecks: () => !!this.o.botChecks?.(), tally: (tool, refused) => this.o.tally?.(tool, refused), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node"),
+            reader: () => (tools.network().pageReader ? reader : undefined),
             ...(!thread.subagent && sandboxTools().browser && sandboxHas("node") ? { browser: () => tools.browser() } : {}) }),
           // A file she wrote that doesn't parse is said in the write's own result.
           createSyntaxExtension({ target: (m) => tools.target(m) }),

@@ -2932,7 +2932,7 @@ new Workspace(keyring, users, { excludePorts, frontDoor? })
 //   `hosts` has ever resolved to, and on the proxy's addresses
 resolveAddresses(hosts): Promise<string[] | undefined>   // undefined: never resolved, so no network
 interface WorkspaceThread { userId; pool; threadId; project?; coordinates? } // project: owning project, passed through subagents at every depth; coordinates: a project chat, whose grants and clones are read-only to it
-interface Network { internet: boolean; services: boolean; hosts: string[]; uploads?: boolean } // uploads false: internet only through the run's relay, reads only (docs/workspace.md, "Uploads")
+interface Network { internet: boolean; services: boolean; hosts: string[]; uploads?: boolean; pageReader?: boolean } // uploads false: internet only through the run's relay, reads only (docs/workspace.md, "Uploads"); pageReader true: web_fetch answers a question through the Cheap subagents model ("Page reader")
 interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   cwd(): Promise<string>;
   ops(): { read; write; edit; bash };     // Pi's tool operations

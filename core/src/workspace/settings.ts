@@ -46,6 +46,11 @@ export interface Network {
    * relay, which passes GET, HEAD and OPTIONS (and a git fetch), so nothing can be uploaded. Left out, it may.
    */
   uploads?: boolean;
+  /**
+   * Whether web_fetch hands the page to the thread's Cheap subagents model, which answers her question about it, so
+   * she gets only its answer (docs/workspace.md, "Page reader"). Left out, it doesn't.
+   */
+  pageReader?: boolean;
 }
 
 export interface ThreadWork {
@@ -65,6 +70,8 @@ export interface ThreadWorkspace {
   hosts: string[] | null;
   /** Uploads with internet on (Network.uploads); null follows the default. Kept in `settings` (workspace.uploads.<thread>). */
   uploads?: boolean | null;
+  /** Page reader (Network.pageReader); null follows the default. Kept in `settings` (workspace.pagereader.<thread>). */
+  pageReader?: boolean | null;
   mode: PermissionMode;
   /** Switches: web_search and web_fetch, and the image tool. Off removes the tools from the session. */
   webSearch: boolean;
@@ -400,8 +407,8 @@ export function checkChecks(value: unknown): string[] {
 
 /** Defaults when the user hasn't set any: general has internet, private has nothing. */
 const DEFAULTS: Record<Pool, Network> = {
-  general: { internet: true, services: false, hosts: [], uploads: true },
-  private: { internet: false, services: false, hosts: [], uploads: true },
+  general: { internet: true, services: false, hosts: [], uploads: true, pageReader: false },
+  private: { internet: false, services: false, hosts: [], uploads: true, pageReader: false },
 };
 
 export type PhotoCloudPolicy = "never" | "ask" | "always";
@@ -525,12 +532,13 @@ export class WorkspaceSettings {
   defaultNetwork(pool: Pool): Network {
     const stored = this.setting(`workspace.network.${pool}`);
     // Defaults saved before Uploads existed allow them, as everything did then.
-    return stored ? { uploads: true, ...JSON.parse(stored) } : DEFAULTS[pool];
+    return stored ? { uploads: true, pageReader: false, ...JSON.parse(stored) } : DEFAULTS[pool];
   }
 
   setDefaultNetwork(pool: Pool, change: Partial<Network>): Network {
     const next = { ...this.defaultNetwork(pool), ...change };
     if (typeof next.uploads !== "boolean") throw new Error("uploads is on or off");
+    if (typeof next.pageReader !== "boolean") throw new Error("page reader is on or off");
     next.hosts = next.hosts.map((h) => parseHost(h).entry);
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.network.${pool}`, JSON.stringify(next));
     return next;
@@ -597,12 +605,13 @@ export class WorkspaceSettings {
   thread(threadId: string): ThreadWorkspace {
     const row = this.db.prepare("SELECT * FROM thread_workspaces WHERE thread_id = ?").get(threadId) as ThreadRow | undefined;
     // A thread from before modes were saved for every new thread: Auto, as it had then. New threads get the default from startThread.
-    if (!row) return { grants: [], internet: null, services: null, hosts: null, uploads: null, mode: "auto", webSearch: true, images: true, claudeCode: false, code: false, evidence: "auto", machines: [], repositories: [], mcpServers: [], parent: null };
+    if (!row) return { grants: [], internet: null, services: null, hosts: null, uploads: null, pageReader: null, mode: "auto", webSearch: true, images: true, claudeCode: false, code: false, evidence: "auto", machines: [], repositories: [], mcpServers: [], parent: null };
     const threadWork = this.threadWork(threadId);
     const bool = (v: number | null) => (v === null ? null : v === 1);
-    const uploads = this.setting(`workspace.uploads.${threadId}`);
+    const uploads = this.setting(`workspace.uploads.${threadId}`), reader = this.setting(`workspace.pagereader.${threadId}`);
     return {
       grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services), uploads: uploads === undefined ? null : uploads === "1",
+      pageReader: reader === undefined ? null : reader === "1",
       hosts: row.hosts === null ? null : JSON.parse(row.hosts), mode: row.mode, webSearch: row.web_search === 1, images: row.images === 1,
       claudeCode: row.claude_code === 1, code: row.code === 1, evidence: EVIDENCE_SETTINGS.includes(row.evidence as EvidenceSetting) ? (row.evidence as EvidenceSetting) : "auto", machines: JSON.parse(row.machines), repositories: JSON.parse(row.repositories), mcpServers: JSON.parse(row.mcp_servers), parent: row.parent, ...(threadWork ? { threadWork } : {}),
     };
@@ -656,6 +665,7 @@ export class WorkspaceSettings {
     next.grants = next.grants.map((g) => ({ path: cleanPath(g.path), writable: g.writable }));
     next.hosts = next.hosts?.map((h) => parseHost(h).entry) ?? null;
     if (next.uploads !== undefined && next.uploads !== null && typeof next.uploads !== "boolean") throw new Error("uploads is on, off or the default");
+    if (next.pageReader !== undefined && next.pageReader !== null && typeof next.pageReader !== "boolean") throw new Error("page reader is on, off or the default");
     const allowed = this.allowed();
     for (const g of next.grants) {
       checkGrant(allowed, pool, g);
@@ -681,6 +691,8 @@ export class WorkspaceSettings {
       if (m.pool !== pool) throw new Error(`${name} is a ${m.pool} MCP server; a ${pool} thread can't use it`);
     }
     if (next.parent) this.checkNarrower(next.parent, pool, next);
+    // Page reader is on wherever an ancestor's is (network), so turning it off there would do nothing: say so.
+    if (change.pageReader === false && next.parent && this.network(next.parent, pool).pageReader) throw new Error("the parent thread has Page reader on");
     this.write(threadId, next);
     this.carryAccounts(threadId, before, next.repositories);
     this.followParent(threadId, before, next.repositories);
@@ -770,9 +782,11 @@ export class WorkspaceSettings {
       images = excluded.images, claude_code = excluded.claude_code, code = excluded.code, evidence = excluded.evidence, machines = excluded.machines, repositories = excluded.repositories, mcp_servers = excluded.mcp_servers`).run(threadId,
       JSON.stringify(t.grants), int(t.internet), int(t.services), t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.parent, int(t.webSearch), int(t.images),
       int(t.claudeCode), int(t.code), t.evidence, JSON.stringify(t.machines), JSON.stringify(t.repositories), JSON.stringify(t.mcpServers));
-    // Uploads live beside the row, so no schema step was needed for them.
-    if (t.uploads === null || t.uploads === undefined) this.db.prepare("DELETE FROM settings WHERE key = ?").run(`workspace.uploads.${threadId}`);
-    else this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.uploads.${threadId}`, t.uploads ? "1" : "0");
+    // Uploads and Page reader live beside the row, so no schema step was needed for them.
+    for (const [key, v] of [["uploads", t.uploads], ["pagereader", t.pageReader]] as const) {
+      if (v === null || v === undefined) this.db.prepare("DELETE FROM settings WHERE key = ?").run(`workspace.${key}.${threadId}`);
+      else this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.${key}.${threadId}`, v ? "1" : "0");
+    }
   }
 
   /**
@@ -793,7 +807,7 @@ export class WorkspaceSettings {
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.narrowed.${childThreadId}`, narrowed ? "1" : "0");
     // Start from nothing, so a refused narrowing leaves the child with no access at all.
     this.write(childThreadId, {
-      grants: [], internet: false, services: false, hosts: [], uploads: false, mode: "plan", webSearch: false, images: false, claudeCode: false, code: false, evidence: "auto", machines: [], repositories: [], mcpServers: [], parent: parentThreadId,
+      grants: [], internet: false, services: false, hosts: [], uploads: false, pageReader: true, mode: "plan", webSearch: false, images: false, claudeCode: false, code: false, evidence: "auto", machines: [], repositories: [], mcpServers: [], parent: parentThreadId,
     });
     return this.setThread(childThreadId, pool, {
       grants: narrower.grants ?? parent.grants,
@@ -801,6 +815,7 @@ export class WorkspaceSettings {
       services: narrower.services ?? net.services,
       hosts: narrower.hosts ?? net.hosts,
       uploads: narrower.uploads ?? net.uploads ?? true,
+      pageReader: narrower.pageReader ?? net.pageReader ?? false,
       mode: narrower.mode ?? parent.mode,
       webSearch: narrower.webSearch ?? parent.webSearch,
       images: narrower.images ?? parent.images,
@@ -819,20 +834,30 @@ export class WorkspaceSettings {
     this.write(threadId, { ...this.effective(threadId), parent: projectId,
       internet: mine.internet && parent.internet, services: mine.services && parent.services,
       hosts: mine.hosts.filter(host => parent.hosts.includes(host)), uploads: mine.uploads !== false && parent.uploads !== false,
+      pageReader: !!mine.pageReader || !!parent.pageReader,
     });
     this.write(threadId, this.effective(threadId));
     this.narrowChildren(threadId);
   }
 
   /** A daughter kept when its parent is forgotten: its settings stay as they are, now its own. */
-  detach(threadId: string): void {
+  detach(threadId: string, pool: Pool): void {
+    this.keepReader(threadId, pool);
     this.db.prepare("UPDATE thread_workspaces SET parent = NULL WHERE thread_id = ?").run(threadId);
   }
 
   /** A daughter cut loose from its living parent (POST …/detach): what applies to it now becomes its own, so leaving never widens it. */
-  separate(threadId: string): void {
+  separate(threadId: string, pool: Pool): void {
+    this.keepReader(threadId, pool);
     const t = this.effective(threadId);
     if (t.parent) this.write(threadId, { ...t, parent: null });
+  }
+
+  /** A Page reader on through an ancestor (network) becomes the thread's own before it leaves the family. */
+  private keepReader(threadId: string, pool: Pool): void {
+    if (this.thread(threadId).parent && this.network(threadId, pool).pageReader) {
+      this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.pagereader.${threadId}`, "1");
+    }
   }
 
   /** Throws if a subagent's thread is now wider than its parent's, say because the parent was narrowed. */
@@ -889,12 +914,19 @@ export class WorkspaceSettings {
 
   private resolve(t: ThreadWorkspace, pool: Pool): Network {
     const d = this.defaultNetwork(pool);
-    return { internet: t.internet ?? d.internet, services: t.services ?? d.services, hosts: t.hosts ?? d.hosts, uploads: t.uploads ?? d.uploads ?? true };
+    return { internet: t.internet ?? d.internet, services: t.services ?? d.services, hosts: t.hosts ?? d.hosts, uploads: t.uploads ?? d.uploads ?? true, pageReader: t.pageReader ?? d.pageReader ?? false };
   }
 
   /** What this thread's tools may reach. */
   network(threadId: string, pool: Pool): Network {
-    return this.resolve(this.thread(threadId), pool);
+    const t = this.thread(threadId);
+    const net = this.resolve(t, pool);
+    // Page reader holds for a whole family: on in any ancestor, as it is now, is on here, so a parent (or the default it
+    // follows) turned on later covers the threads it already has.
+    for (let p = t.parent, seen = new Set<string>(); !net.pageReader && p && !seen.has(p); seen.add(p), p = this.thread(p).parent) {
+      if (this.resolve(this.thread(p), pool).pageReader) net.pageReader = true;
+    }
+    return net;
   }
 
   /** Records what the Files panel added, removed or renamed (`paths` is then the old path and the new), for her next turn. */
@@ -980,7 +1012,7 @@ export class WorkspaceSettings {
     const t = JSON.stringify(threads);
     this.db.prepare("DELETE FROM thread_workspaces WHERE thread_id IN (SELECT value FROM json_each(?))").run(t);
     this.db.prepare("DELETE FROM panel_files WHERE thread_id IN (SELECT value FROM json_each(?))").run(t);
-    this.db.prepare("DELETE FROM settings WHERE key IN (SELECT 'workspace.uploads.' || value FROM json_each(?))").run(t);
+    this.db.prepare("DELETE FROM settings WHERE key IN (SELECT 'workspace.' || k.value || '.' || t.value FROM json_each(?) t, json_each('[\"uploads\",\"pagereader\"]') k)").run(t);
   }
 
   /**
@@ -995,7 +1027,7 @@ export class WorkspaceSettings {
     const gone = rows.map((r) => r.id).filter((id) => !exists(id));
     if (!gone.length) return 0;
     const t = JSON.stringify(gone);
-    this.db.prepare("DELETE FROM settings WHERE key IN (SELECT 'workspace.uploads.' || value FROM json_each(?))").run(t);
+    this.db.prepare("DELETE FROM settings WHERE key IN (SELECT 'workspace.' || k.value || '.' || t.value FROM json_each(?) t, json_each('[\"uploads\",\"pagereader\"]') k)").run(t);
     return Number(this.db.prepare("DELETE FROM thread_workspaces WHERE thread_id IN (SELECT value FROM json_each(?))").run(t).changes)
       + Number(this.db.prepare("DELETE FROM panel_files WHERE thread_id IN (SELECT value FROM json_each(?))").run(t).changes);
   }

@@ -3,6 +3,7 @@ import { StringEnum } from "./string-enum.ts";
 import { BROWSE_ACTIONS, type Browser, clamp, copyName, cutPage, outside, OUTSIDE_GUIDELINE, FETCH_BYTES, FETCH_TOO_LARGE, fetchArgv, fetchedPage, kiwixLines, kiwixPage, kiwixSearch, maskSecrets, offlineQuery, OUTPUT_OVER, RENDER_MS, renderArgv, renderedPage, SEARCH_CATEGORIES, SEARCH_TIMES, searxngSearch, type ExecutionTarget, type FetchedPage } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
+import type { PageReader } from "./reader.ts";
 
 // web_search and web_fetch (DESIGN.md, "Switches in the message box"). The
 // Web search switch turns both off (SWITCHED_TOOLS in workspace.ts). An
@@ -25,7 +26,12 @@ export interface WebTools {
   botChecks?(): boolean;
   /** Counts a page a tool got, and how a site refused it: status and bot check only (WebTally). */
   tally?(tool: "web_fetch" | "render" | "browse", refused?: { status?: number; check?: string }): void;
+  /** The thread's Page reader while its switch is on, read on every call: web_fetch then answers with its answer, not the page. */
+  reader?(): PageReader | undefined;
 }
+
+/** What web_fetch says when Page reader is on and she gave no question. */
+const ASK = "Page reader is on in this conversation: web_fetch needs a question, and another model reads the page and answers it.";
 
 /** Statuses that say the site turned the request away. */
 const REFUSING = new Set([401, 403, 429]);
@@ -108,26 +114,39 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
         maxChars: Type.Optional(Type.Integer({ description: "Most characters to return, up to 50000; 20000 if left out." })),
         offset: Type.Optional(Type.Integer({ description: "Where to start, in characters: the offset a cut page names to read on. 0 if left out." })),
         online: Type.Optional(Type.Boolean({ description: "true: fetch the page online even when the offline copy has it, as when the user asks for the live Wikipedia." })),
+        question: Type.Optional(Type.String({ description: "What you want from the page. Needed when this conversation's Page reader is on: another model then reads the page and you get its answer instead of the page." })),
       }),
       async execute(_id, p, signal) {
+        const reader = web.reader?.();
+        if (reader && !p.question?.trim()) return text(ASK, true);
+        // With Page reader on she gets the reader's answer about this part of the page, still marked as outside content.
+        const answer = async (from: string, part: { text: string; note?: string }) => {
+          if (!reader) return text(`${outside(from, withSections(part))}${part.note ? `\n${part.note}` : ""}`);
+          let read: Awaited<ReturnType<PageReader>>;
+          try {
+            read = await reader(part.text, p.question!.trim(), from, signal);
+          } catch (err) {
+            return text(`Page reader couldn't read ${from}: ${(err as Error).message}`, true);
+          }
+          return text(`${outside(`${from}, as ${read.model} read it for "${p.question!.trim()}"`, read.text)}${part.note ? `\n${part.note}` : ""}`);
+        };
         let url: URL;
         try { url = new URL(p.url.trim()); } catch { return text(`${p.url} isn't a URL.`, true); }
         if (url.protocol !== "http:" && url.protocol !== "https:") return text("web_fetch reads only http and https URLs.", true);
         // The offline copy first: a page it has never needs the network.
         const kiwix = p.online ? undefined : web.kiwix?.();
         if (kiwix) {
-          try {
-            const local = await kiwixPage(kiwix, url, signal);
-            if (local && "image" in local) {
-              return { content: [{ type: "text" as const, text: `A picture from ${local.copy}: ${url.href}` }, { type: "image" as const, data: local.image.toString("base64"), mimeType: local.mimeType }], details: undefined };
-            }
-            if (local) {
-              if (local.isError) return text(local.text, true);
-              const part = cutPage(local.text, clamp(p.maxChars, 20_000, 50_000), p.offset ?? 0);
-              if (part.isError) return text(part.text, true);
-              return text(`${outside(`${url.href} (${local.copy})`, withSections(part))}${part.note ? `\n${part.note}` : ""}`);
-            }
-          } catch { /* online instead */ }
+          // Only the copy's lookup falls back to going online; a page it has is answered from it, even if the reader fails.
+          const local = await kiwixPage(kiwix, url, signal).catch(() => undefined);
+          if (local && "image" in local) {
+            return { content: [{ type: "text" as const, text: `A picture from ${local.copy}: ${url.href}` }, { type: "image" as const, data: local.image.toString("base64"), mimeType: local.mimeType }], details: undefined };
+          }
+          if (local) {
+            if (local.isError) return text(local.text, true);
+            const part = cutPage(local.text, clamp(p.maxChars, 20_000, 50_000), p.offset ?? 0);
+            if (part.isError) return text(part.text, true);
+            return await answer(`${url.href} (${local.copy})`, part);
+          }
         }
         const target = web.target();
         if (!target.run) return text("web_fetch runs only in the sandbox.", true);
@@ -160,7 +179,7 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
           const part = cutPage(page.text, clamp(p.maxChars, 20_000, 50_000), p.offset ?? 0);
           if (part.isError) return text(part.text, true);
           // The note on where to read on is outside the markers, so a page can't fake it; its headings stay inside.
-          return text(`${outside(url.href, withSections(part))}${part.note ? `\n${part.note}` : ""}`);
+          return await answer(url.href, part);
         } catch (err) {
           return text(`Couldn't fetch ${url.href}: ${(err as Error).message}.`, true);
         }

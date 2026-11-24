@@ -35,6 +35,7 @@ added is theirs, and its AGENTS.md is meant to guide her).
 - Done: part 2, docs/workspace.md, "Uploads" (`readOnlyInternet` in
   relay.ts, `readOnlyEnv` in sandbox.ts). The owner approved both controls
   as described.
-- Next: part 3. The reader is one tool-less call through `core/models`
-  with only the page and the question; its answer is held to about 2,000
-  characters and still marked as outside content.
+- Done: part 3, docs/workspace.md, "Page reader" (`extension/src/reader.ts`).
+  The reader is one tool-less call through `core/models` with only the
+  page and the question; its answer is held to 2,000 characters and still
+  marked as outside content.

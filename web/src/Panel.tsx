@@ -291,6 +291,7 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
               <legend>{pool === "general" ? "General threads" : "Private threads"}</legend>
               <Switch label="Internet" checked={n.internet} onChange={(internet) => change(pool, { internet })} />
               <Switch label="Uploads" hint={`Off: her commands, fetches and browser can only read from the internet, not send files or forms. A web address can still carry a little text.${n.internet ? "" : " Needs Internet."}`} checked={n.uploads !== false} disabled={!n.internet} onChange={(uploads) => change(pool, { uploads })} />
+              <Switch label="Page reader" hint="On: when she fetches a web page, the Cheap subagents model reads it and she gets only its answer to her question, so less of a page can reach her. Her browser, commands and MCP tools still see pages whole." checked={!!n.pageReader} onChange={(pageReader) => change(pool, { pageReader })} />
               <Switch label="Local services (localhost)" hint={`Programs running on ${her()}'s own server, such as a database. Never ${her()}'s own page.`} checked={n.services} onChange={(services) => change(pool, { services })} />
               <div className="field"><span>Allowed hosts</span>
                 <ul className="chips">{n.hosts.map((h) => <li key={h}>{h}<button type="button" className="quiet" aria-label={`Remove ${h}`} onClick={() => change(pool, { hosts: n.hosts.filter((x) => x !== h) })}>✕</button></li>)}</ul>

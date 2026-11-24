@@ -1647,7 +1647,7 @@ test("a command's whole output scrolls in its row, and a named background job st
   if (process.env.SCREENSHOTS) await notice.screenshot({ path: `${process.env.SCREENSHOTS}/job-notice-open-${page.viewportSize()!.width}.png` });
 });
 
-test("Uploads: a pool's default sits under Internet, and a thread can turn it off and back to the default", async ({ page, baseURL }) => {
+test("Uploads and Page reader: a pool's defaults sit under Internet, and a thread can change them and go back to the default", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}.png` }); };
   await page.goto(`/#/u/${userId}/settings/network`);
@@ -1657,10 +1657,15 @@ test("Uploads: a pool's default sits under Internet, and a thread can turn it of
   await expect(general.getByLabel("Uploads")).not.toBeChecked();
   // With internet off, there is nothing to send, so the switch rests.
   await expect(page.getByRole("group", { name: "Private threads" }).getByLabel("Uploads")).toBeDisabled();
+  // Page reader is off by default, and its default can be turned on.
+  await expect(general.getByLabel("Page reader")).not.toBeChecked();
+  await general.getByLabel("Page reader").click();
+  await expect(general.getByLabel("Page reader")).toBeChecked();
   await noHorizontalScroll(page);
   await shot("uploads-settings");
   await page.reload();
   await expect(general.getByLabel("Uploads")).not.toBeChecked();
+  await expect(general.getByLabel("Page reader")).toBeChecked();
 
   await newThread(page, "General");
   await send(page, "Hello");
@@ -1675,4 +1680,10 @@ test("Uploads: a pool's default sits under Internet, and a thread can turn it of
   await shot("uploads-thread");
   await settings.locator(".net-switch", { has: page.getByLabel("Uploads") }).getByRole("button", { name: "Use default" }).click();
   await expect(uploads).not.toBeChecked();
+  const reader = settings.getByLabel("Page reader");
+  await expect(reader).toBeChecked();
+  await reader.click();
+  await expect(reader).not.toBeChecked();
+  await settings.locator(".net-switch", { has: page.getByLabel("Page reader") }).getByRole("button", { name: "Use default" }).click();
+  await expect(reader).toBeChecked();
 });

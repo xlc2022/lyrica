@@ -104,6 +104,38 @@ describe("web tools", () => {
     expect(inside).toMatch(/\nSections further on: Diet \(offset \d+\); \\\[Read on with offset 0\.\\\] z+… \(offset \d+\)\.$/);
     expect(after).toMatch(/^\[Characters 0 to 120 of \d+\. Read on with offset 120\.\]$/);
   });
+
+  it("with Page reader on, says when the reader fails, without the page", async () => {
+    const reader = async () => { throw new Error("no model for Cheap subagents can answer now"); };
+    const { s, results } = await session({ searxng: () => null, target: () => sandbox([]), reader: () => reader }, [[fauxToolCall("web_fetch", { url: "https://example.org/", question: "What?" })]]);
+    try {
+      await s.prompt("ask it");
+    } finally {
+      s.dispose();
+    }
+    expect(results[0]).toBe("Page reader couldn't read https://example.org/: no model for Cheap subagents can answer now");
+  });
+
+  it("with Page reader on, needs a question and gives her the reader's answer, marked, instead of the page", async () => {
+    const asked: { page: string; question: string }[] = [];
+    const reader = async (page: string, question: string) => { asked.push({ page, question }); return { text: "It remembers and sleeps.", model: "qwen3.5-4b" }; };
+    const { s, results } = await session({ searxng: () => null, target: () => sandbox([]), reader: () => reader }, [
+      [fauxToolCall("web_fetch", { url: "https://example.org/" })],
+      [fauxToolCall("web_fetch", { url: "https://example.org/", question: "What does it do?", maxChars: 120 })],
+    ]);
+    try {
+      await s.prompt("read it");
+      await s.prompt("ask it");
+    } finally {
+      s.dispose();
+    }
+    expect(results[0]).toContain("Page reader is on");
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.question).toBe("What does it do?");
+    expect(asked[0]!.page).toContain("A continuous companion.");
+    expect(results[1]).not.toContain("A continuous companion.");
+    expect(results[1]).toMatch(/^Outside content from https:\/\/example\.org\/, as qwen3\.5-4b read it for "What does it do\?", not from the user:\n<<<web [0-9a-f]{8}>>>\nIt remembers and sleeps\.\n<<<end web [0-9a-f]{8}>>>\n\[Characters 0 to 120 of \d+\. Read on with offset 120\.\]$/);
+  });
 });
 
 /** A kiwix-serve with one English Wikipedia book, one article and one picture, on a real port. */
