@@ -2063,6 +2063,8 @@ test("Web search: the administrator sets the SearXNG and Kiwix addresses and see
   await conf.fill("hello");
   await drawer.getByRole("button", { name: "Save" }).click();
   await expect(drawer.getByRole("alert")).toContainText("isn't a WireGuard configuration");
+  // The reason is the drawer's alone, not the card's too.
+  await expect(page.getByRole("alert")).toHaveCount(1);
   await conf.fill("hello again");
   await expect(drawer.getByRole("alert")).toHaveCount(0);
   await conf.fill(`[Interface]\nPrivateKey = yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=\nAddress = 10.66.12.34/32\nDNS = 10.64.0.1\n\n[Peer]\nPublicKey = xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=\nAllowedIPs = 0.0.0.0/0\nEndpoint = 185.213.154.68:51820\n`);

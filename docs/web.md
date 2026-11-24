@@ -1134,7 +1134,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   enabled once either changed; then the **Tick bot checks** switch, saved
   when toggled; then **Mullvad**: a Server row, Not set up with Set up…, or
   the server in mono with the tunnel's state word (Connected with the city,
-  Connecting, Not connected with the reason), Replace… and Remove… (a
+  Connecting, Not connected with the reason on a line under it), Replace… and Remove… (a
   confirm dialog); Set up… and Replace… open a drawer with the WireGuard
   configuration field and Save; then the **SearXNG through Mullvad**
   switch; saving either updates `Me.mullvad`;
