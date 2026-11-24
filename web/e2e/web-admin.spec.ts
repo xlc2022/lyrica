@@ -2052,6 +2052,38 @@ test("Web search: the administrator sets the SearXNG and Kiwix addresses and see
   await section.getByLabel("Tick bot checks").click();
   await expect(section.getByLabel("Tick bot checks")).not.toBeChecked();
 
+  // Mullvad: a WireGuard configuration pasted in a drawer, never shown again, its tunnel's state, and SearXNG's switch only once it's set.
+  const viaMullvad = section.getByLabel("SearXNG through Mullvad");
+  await expect(viaMullvad).toBeDisabled();
+  await expect(section.getByText("Not set up")).toBeVisible();
+  await shot("mullvad-empty");
+  await section.getByRole("button", { name: "Set up…" }).click();
+  const drawer = page.getByRole("complementary", { name: "Mullvad" });
+  const conf = drawer.getByLabel("WireGuard configuration");
+  await conf.fill("hello");
+  await drawer.getByRole("button", { name: "Save" }).click();
+  await expect(drawer.getByRole("alert")).toContainText("isn't a WireGuard configuration");
+  await conf.fill("hello again");
+  await expect(drawer.getByRole("alert")).toHaveCount(0);
+  await conf.fill(`[Interface]\nPrivateKey = yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=\nAddress = 10.66.12.34/32\nDNS = 10.64.0.1\n\n[Peer]\nPublicKey = xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=\nAllowedIPs = 0.0.0.0/0\nEndpoint = 185.213.154.68:51820\n`);
+  await shot("mullvad-drawer");
+  await drawer.getByRole("button", { name: "Save" }).click();
+  await expect(drawer).toHaveCount(0);
+  await expect(section.getByText("185.213.154.68:51820")).toBeVisible();
+  await expect(section.locator(".state-word[data-for=mullvad]")).toHaveText(/Connecting|Not connected/);
+  await expect(viaMullvad).toBeEnabled();
+  await viaMullvad.click();
+  await expect(viaMullvad).toBeChecked();
+  await noHorizontalScroll(page);
+  await shot("mullvad-set");
+  await section.getByRole("button", { name: "Remove…" }).click();
+  const remove = page.getByRole("dialog", { name: "Remove Mullvad?" });
+  await shot("mullvad-remove");
+  await remove.getByRole("button", { name: "Remove" }).click();
+  await expect(section.getByText("Not set up")).toBeVisible();
+  await expect(viaMullvad).not.toBeChecked();
+  await expect(viaMullvad).toBeDisabled();
+
   await newThread(page, "General");
   await send(page, "hello there");
   await page.getByRole("button", { name: "Attach or switch tools" }).click();

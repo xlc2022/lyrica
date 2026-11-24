@@ -1132,11 +1132,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (the offline copy of Wikipedia) and its own state word, whose
   Reachable tooltip lists the books kiwix-serve has; one Save for both,
   enabled once either changed; then the **Tick bot checks** switch, saved
-  when toggled; then **Mullvad**: a WireGuard configuration field with
-  Save while none is set, otherwise the server in mono, the tunnel's state
-  word (Connected with the city, Connecting, Not connected with the
-  reason), Replace… and Remove… (a confirm dialog), and the **SearXNG
-  through Mullvad** switch; saving either updates `Me.mullvad`;
+  when toggled; then **Mullvad**: a Server row, Not set up with Set up…, or
+  the server in mono with the tunnel's state word (Connected with the city,
+  Connecting, Not connected with the reason), Replace… and Remove… (a
+  confirm dialog); Set up… and Replace… open a drawer with the WireGuard
+  configuration field and Save; then the **SearXNG through Mullvad**
+  switch; saving either updates `Me.mullvad`;
   `GET`/`PUT …/admin/web-search`),
   **Persona**: the persona changes that users sent on, the
   file now and the proposed text side by side, rendered as Markdown

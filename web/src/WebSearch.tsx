@@ -2,7 +2,8 @@
 // server's one SearXNG address, the kiwix-serve with its offline copy of Wikipedia, whether browse may
 // tick a simple bot-check box, and Mullvad (docs/ux.md, "Mullvad"): the WireGuard configuration the
 // threads' Mullvad switch uses, its state, and whether SearXNG goes through it too.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Icon } from "./icons.tsx";
 import { get, put, u, type WebSearch } from "./api.ts";
 import { her } from "./name.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -53,7 +54,7 @@ export function WebSearchSection({ ctx }: { ctx: ShellContext }) {
       </form>
       {s && <Switch label="Tick bot checks" hint={`Off, ${her()} gets no word about them. On, when a page she browses shows a simple “I'm not a robot” check box, she may tick it.`}
         checked={s.botChecks} disabled={busy} onChange={(on) => run(async () => search.set(await put<WebSearch>(path, { botChecks: on })))} />}
-      {s && <MullvadPart s={s} busy={busy} save={(c) => run(async () => { const next = await put<WebSearch>(path, c); search.set(next); ctx.setMe({ ...ctx.me, mullvad: next.mullvad }); })} />}
+      {s && <MullvadPart s={s} busy={busy} error={error} save={(c) => run(async () => { const next = await put<WebSearch>(path, c); search.set(next); ctx.setMe({ ...ctx.me, mullvad: next.mullvad }); })} />}
     </section>
   );
 }
@@ -72,35 +73,29 @@ function MullvadState({ s }: { s: WebSearch }) {
   );
 }
 
-function MullvadPart({ s, busy, save }: { s: WebSearch; busy: boolean; save: (c: { mullvad?: string | null; searxngMullvad?: boolean }) => Promise<boolean> }) {
-  const [text, setText] = useState<string>();
+function MullvadPart({ s, busy, error, save }: { s: WebSearch; busy: boolean; error: string; save: (c: { mullvad?: string | null; searxngMullvad?: boolean }) => Promise<boolean> }) {
+  const [editing, setEditing] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const editing = !s.mullvad || text !== undefined;
   return (
     <>
       <div className="eyebrow">Mullvad</div>
-      {editing ? (
-        <form className="stack" onSubmit={(e) => { e.preventDefault(); void save({ mullvad: text ?? "" }).then((ok) => { if (ok) setText(undefined); }); }}>
-          <label className="field" title={PASTE_HINT}><span>WireGuard configuration</span>
-            <textarea className="code" name="mullvad" rows={7} spellCheck={false} autoComplete="off" placeholder={"[Interface]\nPrivateKey = …\nAddress = …\n\n[Peer]\nPublicKey = …\nEndpoint = …"}
-              value={text ?? ""} onChange={(e) => setText(e.target.value)} />
-          </label>
-          <div className="inline">
-            <button className="primary" disabled={busy || !text?.trim()}>Save</button>
-            {s.mullvad && <button type="button" onClick={() => setText(undefined)}>Cancel</button>}
-          </div>
-        </form>
-      ) : (
-        <div className="field mullvad-row"><span>Server</span>
-          <span className="mullvad-facts"><span className="mono">{s.mullvadServer}</span> <MullvadState s={s} /></span>
-          <span className="inline">
-            <button type="button" title={PASTE_HINT} onClick={() => setText("")}>Replace…</button>
-            <button type="button" className="danger" onClick={() => setRemoving(true)}>Remove…</button>
-          </span>
-        </div>
-      )}
+      <div className="field mullvad-row"><span>Server</span>
+        <span className="mullvad-facts">
+          {s.mullvad ? <><span className="mono">{s.mullvadServer}</span> <MullvadState s={s} /></> : <span className="muted">Not set up</span>}
+        </span>
+        <span className="inline">
+          <button type="button" title={PASTE_HINT} onClick={() => setEditing(true)}>{s.mullvad ? "Replace…" : "Set up…"}</button>
+          {s.mullvad && <button type="button" className="danger" onClick={() => setRemoving(true)}>Remove…</button>}
+        </span>
+      </div>
       <Switch label="SearXNG through Mullvad" hint={`On, SearXNG's searches leave through Mullvad too. Search engines refuse some Mullvad addresses.${s.mullvad ? "" : " Needs Mullvad set up."}`}
         checked={s.searxngMullvad} disabled={busy || !s.mullvad} onChange={(on) => void save({ searxngMullvad: on })} />
+      {editing && (
+        <>
+          <MullvadDrawer busy={busy} error={error} onClose={() => setEditing(false)} onSave={(text) => save({ mullvad: text }).then((ok) => { if (ok) setEditing(false); })} />
+          <div className="scrim drawer-scrim" aria-hidden="true" onClick={() => setEditing(false)} />
+        </>
+      )}
       {removing && (
         <Dialog labelledBy="mullvad-remove" onCancel={() => setRemoving(false)} onSubmit={() => void save({ mullvad: null }).then((ok) => { if (ok) setRemoving(false); })}>
           <h2 id="mullvad-remove">Remove Mullvad?</h2>
@@ -109,5 +104,37 @@ function MullvadPart({ s, busy, save }: { s: WebSearch; busy: boolean; save: (c:
         </Dialog>
       )}
     </>
+  );
+}
+
+/** The configuration, pasted: the text never comes back from the server, so the field starts empty each time. */
+function MullvadDrawer({ busy, error, onSave, onClose }: { busy: boolean; error: string; onSave: (text: string) => Promise<void>; onClose: () => void }) {
+  const [text, setText] = useState("");
+  // A reason for the last Save stays only until the text changes.
+  const [edited, setEdited] = useState(false);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [onClose]);
+  return (
+    <aside ref={ref} tabIndex={-1} className="drawer" aria-labelledby="mullvad-drawer">
+      <div className="drawer-head">
+        <h2 id="mullvad-drawer">Mullvad</h2>
+        <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
+      </div>
+      <form className="drawer-body" onSubmit={(e) => { e.preventDefault(); if (text.trim()) { setEdited(false); void onSave(text); } }}>
+        <label className="field" title={PASTE_HINT}><span>WireGuard configuration</span>
+          <textarea className="code" name="mullvad" rows={12} spellCheck={false} autoComplete="off" autoFocus
+            placeholder={"[Interface]\nPrivateKey = …\nAddress = …\n\n[Peer]\nPublicKey = …\nEndpoint = …"} value={text} onChange={(e) => { setText(e.target.value); setEdited(true); }} />
+        </label>
+        <ErrorText error={edited ? "" : error} />
+        <div className="row drawer-foot">
+          <button type="submit" className="primary" disabled={busy || !text.trim()}>Save</button>
+          <button type="button" onClick={onClose}>Cancel</button>
+        </div>
+      </form>
+    </aside>
   );
 }

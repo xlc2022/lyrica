@@ -878,9 +878,10 @@ else on the machine goes through it.
    (mullvad.net/account/wireguard-config), generate a key, pick one
    server, and download its `.conf`. It takes one of the account's five
    devices.
-2. Paste the file's text under Administration, **Web search**, Mullvad's
-   **WireGuard configuration**, and **Save**. Its line says **Connected**
-   with the city once Mullvad's own check sees the tunnel.
+2. Under Administration, **Web search**, press Mullvad's **Set up…**,
+   paste the file's text into **WireGuard configuration**, and **Save**.
+   Its line says **Connected** with the city once Mullvad's own check sees
+   the tunnel.
 3. Turn **Mullvad** on per thread in its settings drawer, or as a default
    under Settings, **Network**. **SearXNG through Mullvad**, in the same
    section, sends her searches through it too; some engines refuse

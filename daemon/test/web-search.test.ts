@@ -8,7 +8,8 @@ import { browser, daemon, enc, login, runtime } from "./helpers.ts";
 
 // Administration → Web search: the server's SearXNG address, and the kiwix-serve with its offline copy of Wikipedia.
 
-const NO_KIWIX = { kiwix: null, kiwixState: "unset", books: [], botChecks: false };
+const NO_MULLVAD = { mullvad: false, mullvadState: "off", searxngMullvad: false };
+const NO_KIWIX = { kiwix: null, kiwixState: "unset", books: [], botChecks: false, ...NO_MULLVAD };
 
 /** A kiwix-serve whose catalog has one book. */
 async function kiwix() {
@@ -82,7 +83,7 @@ describe("web search", () => {
     // The Kiwix address, saved on its own, names the books; it counts as a provider too.
     const k = await kiwix();
     const withKiwix = (await ada.put<WebSearch>(url, { kiwix: `${k}/` })).body;
-    expect(withKiwix).toEqual({ searxng: null, auth: false, state: "unset", kiwix: k, kiwixState: "reachable", books: [{ name: "wikipedia_en_all_nopic", title: "Wikipedia", language: "eng", date: "2026-06-01" }], botChecks: false });
+    expect(withKiwix).toEqual({ searxng: null, auth: false, state: "unset", kiwix: k, kiwixState: "reachable", books: [{ name: "wikipedia_en_all_nopic", title: "Wikipedia", language: "eng", date: "2026-06-01" }], botChecks: false, ...NO_MULLVAD });
     expect((await ada.get<ThreadSettings>(settings)).body.searchProvider).toBe(true);
     expect((await ada.put<WebSearch>(url, { searxng: good })).body).toMatchObject({ searxng: good, kiwix: k });
     expect((await ada.put<WebSearch>(url, { kiwix: `http://${await searxng()}` })).body).toMatchObject({ kiwixState: "unreachable", kiwixReason: expect.stringContaining("catalog") });
@@ -171,5 +172,29 @@ describe("web search", () => {
     await browser(fourth.base).post("/api/unlock", { passphrase: "passphrase" });
     ada = await login(fourth.base, "ada", "pw");
     expect((await ada.get<WebSearch>(url)).body.searxng).toBe(local);
+  });
+
+  it("keeps Mullvad's configuration without ever sending it back, and turns SearXNG's switch on only with one", async () => {
+    const rt = await runtime();
+    // No wireproxy here: the tunnel says why it isn't up, and nothing else changes.
+    const { base, stop } = await daemon(rt, { mullvad: { binary: join(rt.home, "no-wireproxy") } });
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const url = `/api/u/${rt.ada.id}/admin/web-search`, me = `/api/u/${rt.ada.id}/me`;
+    expect((await ada.put(url, { mullvad: "hello" })).status).toBe(400);
+    expect((await ada.put(url, { searxngMullvad: true })).status).toBe(400);
+    const key = "yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=";
+    const conf = `[Interface]\nPrivateKey = ${key}\nAddress = 10.66.12.34/32\n\n[Peer]\nPublicKey = xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=\nAllowedIPs = 0.0.0.0/0\nEndpoint = 185.213.154.68:51820\n`;
+    const set = (await ada.put<WebSearch>(url, { mullvad: conf })).body;
+    expect(set).toMatchObject({ mullvad: true, mullvadServer: "185.213.154.68:51820", searxngMullvad: false });
+    expect(["connecting", "failed"]).toContain(set.mullvadState);
+    expect(JSON.stringify(set)).not.toContain(key);
+    expect(JSON.stringify((await ada.get(url)).body)).not.toContain(key);
+    expect((await ada.get<{ mullvad: boolean }>(me)).body.mullvad).toBe(true);
+    expect((await ada.put<WebSearch>(url, { searxngMullvad: true })).body.searxngMullvad).toBe(true);
+    // Removing it turns SearXNG's switch off with it.
+    expect((await ada.put<WebSearch>(url, { mullvad: null })).body).toMatchObject({ mullvad: false, mullvadState: "off", searxngMullvad: false });
+    expect((await ada.get<{ mullvad: boolean }>(me)).body.mullvad).toBe(false);
+    await stop();
   });
 });
