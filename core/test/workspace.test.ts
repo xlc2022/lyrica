@@ -113,14 +113,14 @@ describe("grants", () => {
 
   it("follow each pool's network defaults unless the thread overrides them", async () => {
     const { settings } = await setup();
-    expect(settings.network("g1", "general")).toEqual({ internet: true, services: false, hosts: [] });
-    expect(settings.network("p1", "private")).toEqual({ internet: false, services: false, hosts: [] });
+    expect(settings.network("g1", "general")).toEqual({ internet: true, services: false, hosts: [], uploads: true });
+    expect(settings.network("p1", "private")).toEqual({ internet: false, services: false, hosts: [], uploads: true });
     settings.setThread("g1", "general", { internet: false, services: true });
     expect(settings.network("g1", "general")).toMatchObject({ internet: false, services: true });
     settings.setThread("p1", "private", { hosts: ["http://nas.lan:8080/api", "192.168.1.0/24"] });
     expect(settings.network("p1", "private").hosts).toEqual(["nas.lan:8080", "192.168.1.0/24"]);
     settings.setDefaultNetwork("private", { internet: true, hosts: ["nas.lan"] });
-    expect(settings.network("p2", "private")).toEqual({ internet: true, services: false, hosts: ["nas.lan"] });
+    expect(settings.network("p2", "private")).toEqual({ internet: true, services: false, hosts: ["nas.lan"], uploads: true });
     expect(() => settings.setThread("p1", "private", { hosts: ["not a host"] })).toThrow(/can't read host/);
     for (const all of ["0.0.0.0/0", "10.0.0.0/0", "0.0.0.0", "0.0.0.0:443", "255.255.255.255"]) {
       expect(() => settings.setThread("p1", "private", { hosts: [all] }), all).toThrow(/every address|isn't a host/);
@@ -128,6 +128,20 @@ describe("grants", () => {
     for (const v6 of ["::/0", "::", "fd00::1", "[fd00::1]:80", "http://[fd00::1]:8080/"]) {
       expect(() => settings.setThread("p1", "private", { hosts: [v6] }), v6).toThrow(/IPv6 hosts aren't supported yet/);
     }
+  });
+
+  it("keep uploads on unless the default or the thread turns them off, and a child never turns them back on", async () => {
+    const { settings } = await setup();
+    settings.setDefaultNetwork("general", { uploads: false });
+    expect(settings.network("g1", "general")).toMatchObject({ internet: true, uploads: false });
+    settings.setThread("g1", "general", { uploads: true });
+    expect(settings.network("g1", "general").uploads).toBe(true);
+    settings.setThread("g2", "general", { uploads: null });
+    expect(settings.inheritSettings("g2", "c1", "general")).toMatchObject({ uploads: false });
+    expect(() => settings.inheritSettings("g2", "c2", "general", { uploads: true })).toThrow(/uploads off/);
+    expect(() => settings.setDefaultNetwork("general", { uploads: "no" as never })).toThrow(/on or off/);
+    settings.forgetThreads(["g1"]);
+    expect(settings.thread("g1").uploads).toBeNull();
   });
 
   it("let a subagent have its parent's settings or stricter ones, never wider", async () => {

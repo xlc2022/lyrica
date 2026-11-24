@@ -806,7 +806,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/network`, (r) => networkDefaults(d, d.userFor(r).id)),
     route("PATCH", `${u}/network/:pool`, async (r) => {
       const user = d.userFor(r);
-      const change = pick(await r.json<Api.NetworkChange>(), ["internet", "services", "hosts"]);
+      const change = pick(await r.json<Api.NetworkChange>(), ["internet", "services", "hosts", "uploads"]);
       s().workspace.settings(user.id).setDefaultNetwork(poolOf(r), change);
       return networkDefaults(d, user.id);
     }),
@@ -1835,7 +1835,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (kind === "pdf" && !isPdf(bytes)) throw new HttpError(415, "this file isn't a PDF");
       // With the thread's internet off an HTML page runs nothing, so it gets no console bridge either.
       const user = d.userFor(r);
-      const internet = kind !== "html" || s().workspace.network({ userId: user.id, pool: poolOf(r), threadId: owner(d, user, (o) => threadOf(o, r)).id }).internet;
+      const internet = kind !== "html" || sendsOut(s().workspace.network({ userId: user.id, pool: poolOf(r), threadId: owner(d, user, (o) => threadOf(o, r)).id }));
       if (kind === "html" && internet) bytes = withConsole(bytes);
       r.res.writeHead(200, viewHeaders(kind, bytes.length, internet));
       r.res.end(bytes);
@@ -3240,7 +3240,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     ...(answered ? { answered } : {}),
     ...(threadId ? contextOf(d, user, pool, threadId, answered) ?? {} : {}),
     code: applies.code, localOnly: ctx.localOnly,
-    internet: tw.internet, services: tw.services, hosts: tw.hosts,
+    internet: tw.internet, services: tw.services, hosts: tw.hosts, uploads: tw.uploads ?? null,
     network: workspace.network({ userId: user.id, pool, threadId }),
     grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mcpServers: applies.mcpServers, mode: applies.mode, bypassAllowed: workspace.settings(user.id).bypassAllowed(), webSearch: applies.webSearch,
     searchProvider: !!(searxngAddress(d.keyring.self()) || kiwixAddress(d.keyring.self())), images: applies.images, unlogged: isUnlogged, parent: tw.parent,
@@ -3256,7 +3256,13 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   };
 }
 
-const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "code", "evidence", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
+/**
+ * Whether a page the thread made may reach the internet when the person opens it: its internet on with uploads on.
+ * With uploads off it is treated as off (sealed), since the person's browser can't be held to reading.
+ */
+const sendsOut = (net: { internet: boolean; uploads?: boolean }) => net.internet && net.uploads !== false;
+
+const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "uploads", "mode", "code", "evidence", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
 
 /** A thread's subagents and child threads, and theirs, hidden ones included. */
 function descendants(d: Lyricad, user: User, pool: Pool, threadId: string): string[] {
@@ -3875,7 +3881,7 @@ function artifactRoutes(d: Lyricad, u: string): Route[] {
       if (!page) throw new HttpError(415, "this artifact doesn't open as a page");
       const kind = a.kind === "svg" ? "svg" : "html";
       // With its thread's internet off an HTML page runs nothing, so it gets no console bridge either.
-      const internet = kind !== "html" || s().workspace.network({ userId: user.id, pool: p, threadId: a.thread ?? "" }).internet;
+      const internet = kind !== "html" || sendsOut(s().workspace.network({ userId: user.id, pool: p, threadId: a.thread ?? "" }));
       // A built React page runs with the internet off too, sealed from the network (viewHeaders), but only in a frame:
       // opened on its own, nothing would stop it navigating away with what it holds, so there it runs nothing.
       const sealed = a.kind === "react" && !internet && r.req.headers["sec-fetch-dest"] === "iframe";

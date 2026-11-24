@@ -832,7 +832,9 @@ the snapshots and her `tailscaled`'s folders (`/var/lib/lyrica-tailscale`,
 Administration, Users.
 
 Network defaults are per user and pool: general threads start with internet
-on and local services off, private threads with both off. Change
+on and local services off, private threads with both off, and uploads on.
+Turning **Uploads** off lets her commands and browser only read from the
+internet, through Lyrica's own relay. Change
 them under Settings, Network (below its "New threads" group, which holds
 the default mode and Fallback), or with `lyrica admin net`. Each
 thread can narrow or widen its own from the thread settings drawer.

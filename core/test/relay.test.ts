@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { connect as tlsConnect } from "node:tls";
 import { gzipSync } from "node:zlib";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { gitEnv, openRelay, useTailnetProxy, type ForgeCredential, type Relay } from "../src/index.ts";
+import { gitEnv, openRelay, readOnlyRequest, relayPorts, UPLOADS_OFF, useTailnetProxy, type ForgeCredential, type Relay } from "../src/index.ts";
 
 // A run's relay keeps Git tokens in lyricad (docs/workspace.md, "Credentials"):
 // git, gh and tea hold placeholders, and the relay swaps in a token only
@@ -416,5 +416,76 @@ describe("Claude Code's usage through the relay", () => {
     } finally {
       relay.close();
     }
+  });
+});
+
+describe("a run's relay with uploads off", () => {
+  const readOnly = () => openRelay({
+    forge: [credential({})], reaches: () => true, internet: true,
+    upstreams: { "github.com": base, "api.github.com": base, "example.com": base, "example.org": base, "codeberg.org": base },
+    readOnlyInternet: { refused: (a) => a.startsWith("127.") },
+  });
+  /** A plain http request through the relay as a proxy (an absolute URL). */
+  const plainThrough = (relay: Relay, url: string, method = "GET") => new Promise<number>((resolve, reject) => {
+    const req = httpRequest({ host: "127.0.0.1", port: relay.port, method, path: url, headers: method === "POST" ? { "content-length": "2" } : {} }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
+    req.on("error", reject);
+    req.end(method === "POST" ? "hi" : undefined);
+  });
+
+  it("reads any host through its authority, with or without the capability, and refuses anything that sends", async () => {
+    const relay = await readOnly();
+    try {
+      seen.length = 0;
+      expect(relayPorts()).toContain(relay.port);
+      expect(relay.leafKey).toMatch(/^[A-Za-z0-9+/]{43}=$/);
+      expect((await through(relay, "example.com", "/page")).status).toBe(404);
+      expect(await postThrough(relay, "example.com", "/form", "", '{"notes":"private"}')).toEqual({ status: 403, body: UPLOADS_OFF });
+      // Chromium sends no capability: it still only reads.
+      const { socket } = await tunnel(relay, "example.org", "");
+      socket?.destroy();
+      expect(socket).toBeDefined();
+      expect(await plainThrough(relay, "http://example.org/a")).toBe(404);
+      expect(await plainThrough(relay, "http://example.org/a", "POST")).toBe(403);
+      // This machine is never reached, by name or address.
+      expect((await through(relay, "127.0.0.1:7340", "/")).status).toBe(403);
+      // Nor by IPv6, which the sandbox doesn't have: a mapped address is this machine's IPv4 loopback.
+      for (const to of ["[::1]:7340", "[::ffff:127.0.0.1]:7340", "[::ffff:7f00:1]:7340"]) expect(await plainThrough(relay, `http://${to}/`)).toBe(403);
+      // A git fetch's body goes only to a forge, which reads it as wants and haves, never to any other host.
+      const pack = { "content-type": "application/x-git-upload-pack-request" };
+      expect((await postThrough(relay, "codeberg.org", "/a/b.git/git-upload-pack", "", "0000", pack)).status).toBe(401); // the forge itself answers
+      expect(await postThrough(relay, "example.com", "/x/git-upload-pack", "", "A".repeat(5000), pack)).toEqual({ status: 403, body: UPLOADS_OFF });
+      expect(seen.map((x) => x.url)).toEqual(["/page", "/a"]);
+    } finally {
+      relay.close();
+    }
+    expect(relayPorts()).not.toContain(relay.port);
+  });
+
+  it("lets a credential write only to its own repository", async () => {
+    const relay = await readOnly();
+    try {
+      seen.length = 0;
+      const auth = `token ${"lyrica_placeholder_github"}`;
+      expect((await postThrough(relay, "api.github.com", "/repos/ada/lyrica/issues", auth, '{"title":"t"}')).status).toBe(404);
+      expect(await postThrough(relay, "api.github.com", "/repos/eve/drop/issues", auth, '{"title":"the user\'s notes"}')).toEqual({ status: 403, body: UPLOADS_OFF });
+      expect(await postThrough(relay, "api.github.com", "/gists", auth, '{"files":{}}')).toEqual({ status: 403, body: UPLOADS_OFF });
+      // GraphQL: a query reads; gh's pull request create is the one write.
+      expect((await postThrough(relay, "api.github.com", "/graphql", auth, '{"query":"query { viewer { login } }"}')).status).toBe(404);
+      expect((await postThrough(relay, "api.github.com", "/graphql", auth, '{"query":"mutation { createIssue(input:{}) { issue { id } } }"}')).status).toBe(403);
+      expect(seen.map((x) => x.url)).toEqual(["/repos/ada/lyrica/issues", "/graphql"]);
+    } finally {
+      relay.close();
+    }
+  });
+
+  it("counts only a bodiless read or a git fetch as reading", () => {
+    expect(readOnlyRequest("GET", "/", {})).toBe("yes");
+    expect(readOnlyRequest("GET", "/", { "content-length": "5" })).toBe("no");
+    expect(readOnlyRequest("GET", "/", { "transfer-encoding": "chunked" })).toBe("no");
+    expect(readOnlyRequest("GET", "/ws", { upgrade: "websocket" })).toBe("no");
+    expect(readOnlyRequest("GET", "/", { "x-http-method-override": "DELETE" })).toBe("no");
+    expect(readOnlyRequest("POST", "/a/b.git/git-upload-pack", { "content-type": "application/x-git-upload-pack-request" })).toBe("upload-pack");
+    expect(readOnlyRequest("POST", "/a/b.git/git-receive-pack", { "content-type": "application/x-git-receive-pack-request" })).toBe("no");
+    expect(readOnlyRequest("PUT", "/x", {})).toBe("no");
   });
 });

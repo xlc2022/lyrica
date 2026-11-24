@@ -18,7 +18,7 @@ review, and a PR with a control to UI review too.
    OPTIONS (and a git fetch's upload-pack), so a command, fetch or the
    browser can read but not send a file or a form. A URL can still carry
    a little text out; the switch doesn't claim otherwise. The thread's own
-   repositories keep their token relay.
+   repositories keep their token relay, writing only to themselves.
 3. **Page reader switch** (principle 2). After Uploads, default off. On:
    `web_fetch` takes a question, the thread's Cheap subagents model reads
    the page and answers, and she gets only the answer. `browse` still
@@ -32,4 +32,9 @@ added is theirs, and its AGENTS.md is meant to guide her).
 
 - Done: part 1, `extension/src/outside.ts`, `outside(…, kind)` and
   `unmarked` in `core/src/web.ts`.
-- Next: parts 2 and 3 wait on the owner's yes to the two controls.
+- Done: part 2, docs/workspace.md, "Uploads" (`readOnlyInternet` in
+  relay.ts, `readOnlyEnv` in sandbox.ts). The owner approved both controls
+  as described.
+- Next: part 3. The reader is one tool-less call through `core/models`
+  with only the page and the question; its answer is held to about 2,000
+  characters and still marked as outside content.

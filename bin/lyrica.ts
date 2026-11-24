@@ -31,7 +31,7 @@ const USAGE = `usage:
   lyrica admin ssh list|remove --user <login> [<name>]            (every machine, Proxmox ones too)
   lyrica admin proxmox add --user <login> <name> https://<host>[:<port>] [--pool general|private] [--limit ask|acceptEdits|auto]
   lyrica admin net show --user <login>
-  lyrica admin net set --user <login> --pool general|private internet|services on|off
+  lyrica admin net set --user <login> --pool general|private internet|services|uploads on|off
   lyrica admin net hosts add|remove --user <login> --pool general|private <host>
 ${MODELS_USAGE}
   lyrica dev --init <dir>
@@ -253,9 +253,9 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
   if (kind === "net" && action === "show") {
     for (const p of ["general", "private"] as const) {
       const n = settings.defaultNetwork(p);
-      console.log(`${p}: internet ${n.internet ? "on" : "off"}, local services ${n.services ? "on" : "off"}, hosts: ${n.hosts.join(", ") || "(none)"}`);
+      console.log(`${p}: internet ${n.internet ? "on" : "off"}, uploads ${n.uploads === false ? "off" : "on"}, local services ${n.services ? "on" : "off"}, hosts: ${n.hosts.join(", ") || "(none)"}`);
     }
-  } else if (kind === "net" && action === "set" && isPool(pool) && (rest[0] === "internet" || rest[0] === "services") && (rest[1] === "on" || rest[1] === "off")) {
+  } else if (kind === "net" && action === "set" && isPool(pool) && (rest[0] === "internet" || rest[0] === "services" || rest[0] === "uploads") && (rest[1] === "on" || rest[1] === "off")) {
     settings.setDefaultNetwork(pool, { [rest[0]]: rest[1] === "on" });
     console.log(`${login}'s ${pool} threads: ${rest[0]} ${rest[1]} by default.`);
   } else if (kind === "net" && action === "hosts" && isPool(pool) && (rest[0] === "add" || rest[0] === "remove") && rest[1]) {

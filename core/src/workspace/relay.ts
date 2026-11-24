@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingHttpHeaders, type IncomingMessage, type ServerResponse } from "node:http";
 import { request as httpsRequest, type RequestOptions } from "node:https";
+import { lookup } from "node:dns/promises";
 import { connect, isIP, type AddressInfo, type Socket } from "node:net";
 import * as tls from "node:tls";
 import { createSecureContext, TLSSocket, type SecureContext } from "node:tls";
@@ -54,6 +55,12 @@ export interface RelaySpec {
   onUsage?: (usage: ClaudeCodeUsage) => void;
   /** Called when Anthropic refuses a Claude Code request because the user's Claude plan reached its usage limit, with when it resets if it says. */
   onLimit?: (until?: number) => void;
+  /**
+   * Uploads off (Network.uploads): the run's internet is only this relay, which ends TLS for any host and passes
+   * reads alone (`readOnlyRequest`); a credential still writes, but only to its own repository. `refused` says which
+   * addresses the run's internet never reaches: this machine's own, as the firewall shuts them.
+   */
+  readOnlyInternet?: { refused(address: string): boolean };
 }
 
 /** One Claude Code request's tokens: `inputTokens` counts every prompt token read, cached or not. `model` is the model that answered, when it said. */
@@ -64,8 +71,10 @@ export interface Relay {
   port: number;
   /** What opens it: the bearer token for Anthropic, the proxy password for Git. Random, for this run only. */
   capability: string;
-  /** The run's certificate authority, which the run trusts for its Git hosts; none without Git credentials. */
+  /** The run's certificate authority, which the run trusts for its Git hosts and, with uploads off, every host; none without either. */
   ca?: string;
+  /** Its host certificates' one key, for Chromium (certs.ts `leafKey`). */
+  leafKey?: string;
   close(): void;
 }
 
@@ -112,7 +121,7 @@ function tunnelTo(host: string, port: number, secure: boolean, mayResolveInto: b
 
 /** host:port as a CONNECT names it, without :443. */
 const target = (hostPort: string) => hostPort.toLowerCase().replace(/:443$/, "");
-const hostname = (t: string) => t.replace(/^\[(.*)\](:\d+)?$/, "$1").replace(/:\d+$/, "");
+const hostname = (t: string) => /^\[([^\]]*)\](?::\d+)?$/.exec(t)?.[1] ?? t.replace(/:\d+$/, "");
 
 /** Whether a path, decoded as a server would, stays where it starts: no `.` or `..` segment, no `//`. */
 function plain(path: string): boolean {
@@ -313,6 +322,50 @@ function usageReader(type: string, done: (usage: ClaudeCodeUsage) => void): { da
   };
 }
 
+/** The ports of every relay open now: no sandbox but the run's own may reach one (sandbox.ts excludes the others). */
+const live = new Set<number>();
+export const relayPorts = (): number[] => [...live];
+
+/** What a run with uploads off may send to the internet. */
+const READS = new Set(["GET", "HEAD", "OPTIONS"]);
+/** A git fetch's request: wants and haves, refused past this. */
+export const UPLOAD_PACK_LIMIT = 1024 * 1024;
+/**
+ * Where a git fetch's POST may go with uploads off, besides the hosts of the run's own Git credentials: forges whose
+ * upload-pack endpoint reads the body as wants and haves, so a third party can't collect it there. Anywhere else the
+ * body would be an upload channel (object ids are free-form hex), so a clone from another host uses the dumb protocol.
+ */
+export const PACK_HOSTS: readonly string[] = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"];
+export const UPLOADS_OFF = "Uploads are off in this conversation: only GET, HEAD and OPTIONS requests (and a git fetch) reach the internet.\n";
+
+/**
+ * Whether a request only reads, for a run with uploads off: GET, HEAD or OPTIONS with no body, or a git fetch's
+ * upload-pack POST (its body is held to UPLOAD_PACK_LIMIT as it passes). A method override, an upgrade (a WebSocket
+ * sends both ways) or a body on a read is refused.
+ */
+export function readOnlyRequest(method: string | undefined, path: string, headers: IncomingHttpHeaders): "yes" | "upload-pack" | "no" {
+  const m = String(method ?? "GET").toUpperCase();
+  if (METHOD_OVERRIDES.some((h) => headers[h] !== undefined) || headers.upgrade !== undefined) return "no";
+  const body = headers["transfer-encoding"] !== undefined || Number(headers["content-length"] ?? 0) > 0;
+  if (READS.has(m)) return body ? "no" : "yes";
+  const route = path.split("?")[0]!.toLowerCase();
+  const type = String(headers["content-type"] ?? "").toLowerCase();
+  return m === "POST" && route.endsWith("/git-upload-pack") && type.startsWith("application/x-git-upload-pack-request") ? "upload-pack" : "no";
+}
+
+/**
+ * Whether a credential's write with uploads off stays in its own repository: a push to its Git paths, or its own
+ * repository's REST API. Anything else it writes (another repository's issue, a gist) would carry text out.
+ */
+export function ownRepository(c: ForgeCredential, to: string, path: string): boolean {
+  if (!plain(path)) return false;
+  const route = path.split("?")[0]!.toLowerCase(), repo = c.repo.toLowerCase(), host = target(c.host);
+  const under = (prefix: string) => route === prefix || route.startsWith(`${prefix}/`);
+  if (to === host && route.startsWith(`/${repo}.git/`)) return true;
+  if (c.kind === "github") return host === "github.com" ? (to === "api.github.com" || to === "uploads.github.com") && under(`/repos/${repo}`) : to === host && under(`/api/v3/repos/${repo}`);
+  return (c.kind === "gitea" || c.kind === "forgejo") && to === host && under(`/api/v1/repos/${repo}`);
+}
+
 /** Opens a relay for one run. */
 export async function openRelay(spec: RelaySpec): Promise<Relay> {
   const capability = randomBytes(32).toString("base64url");
@@ -322,7 +375,8 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     const b = Buffer.from(expected);
     return a.length === b.length && timingSafeEqual(a, b);
   };
-  const authority = forge.length ? makeAuthority() : undefined;
+  const readOnly = spec.readOnlyInternet;
+  const authority = forge.length || readOnly ? makeAuthority() : undefined;
   const contexts = new Map<string, SecureContext>();
   const contextFor = (host: string) => {
     if (!contexts.has(host)) contexts.set(host, createSecureContext(authority!.issue(host)));
@@ -385,6 +439,12 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
   // Claude Code: plain HTTP to the relay as its base URL, the capability as its bearer token.
   const server = createServer((req, res) => {
     const path = req.url ?? "";
+    // Uploads off: a plain http request through the relay as its proxy (an absolute URL), to read.
+    if (readOnly && /^http:\/\//i.test(path)) {
+      let url: URL;
+      try { url = new URL(path); } catch { return refuse(req, res, 400, "Not a URL.\n"); }
+      return outbound(url.host, false, `${url.pathname}${url.search}`, req, res);
+    }
     if (!spec.anthropic || !same(String(req.headers.authorization ?? ""), `Bearer ${capability}`) || !path.startsWith("/v1/")) {
       return refuse(req, res, 401, '{"type":"error","error":{"type":"authentication_error","message":"not this run\'s relay"}}', "application/json");
     }
@@ -412,6 +472,23 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
         return refuse(req, res, 403, `This run's Git credential isn't for ${to}${path.split("?")[0]}.\n`);
       }
       if (c) headers.authorization = basic === undefined ? `${scheme} ${c.token}` : `Basic ${Buffer.from(`${basic.slice(0, basic.indexOf(":"))}:${c.token}`).toString("base64")}`;
+    }
+    // Uploads off: what a credential writes stays in its own repository, and anything else only reads.
+    if (readOnly && readOnlyRequest(req.method, path, req.headers) === "no" && !(c && ownRepository(c, to, path))) {
+      const graphql = c && req.method === "POST" && readsOnly(c, to, "POST", path) === "graphql";
+      if (!graphql || req.headers["content-encoding"]) return refuse(req, res, 403, UPLOADS_OFF);
+      // A GraphQL query still reads, and gh's pull request create is its one write; any other mutation is refused.
+      const chunks: Buffer[] = [];
+      let size = 0;
+      req.on("data", (d: Buffer) => { size += d.length; if (size <= GRAPHQL_LIMIT) chunks.push(d); });
+      req.on("end", () => {
+        const body = Buffer.concat(chunks);
+        if (size > GRAPHQL_LIMIT || !(graphqlReads(body) || (graphqlCreatesPull(body) && !c!.readOnly))) return refuse(req, res, 403, UPLOADS_OFF);
+        const capture = graphqlCreatesPull(body) && spec.onPullCreate;
+        if (capture) headers["accept-encoding"] = "identity";
+        forward(to, path, req, res, headers, capture ? (answer) => noteGraphqlPullCreate(c!, answer, spec.onPullCreate!) : undefined, undefined, body);
+      });
+      return;
     }
     if (c?.readOnly) {
       const reads = readsOnly(c, to, String(req.method ?? "GET").toUpperCase(), path);
@@ -460,14 +537,62 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     forward(to, path, req, res, headers);
   });
 
+  /**
+   * A read going out with uploads off, to `to` (host or host:port) at an address the run's internet reaches: the name
+   * is looked up here and the request goes to that address, so a name can't be pointed at this machine afterwards.
+   */
+  const outbound = (to: string, secure: boolean, path: string, req: IncomingMessage, res: ServerResponse) => {
+    const kind = readOnlyRequest(req.method, path, req.headers);
+    const host = hostname(to);
+    if (kind === "no" || (kind === "upload-pack" && !PACK_HOSTS.includes(host.toLowerCase()) && !forge.some((c) => c.host.toLowerCase() === host.toLowerCase()))) return refuse(req, res, 403, UPLOADS_OFF);
+    const port = Number(/^(?:\[[^\]]*\]|[^:]*):(\d+)$/.exec(to)?.[1] ?? (secure ? 443 : 80));
+    const base = spec.upstreams?.[to] ? new URL(spec.upstreams[to]!) : undefined;
+    const go = (address: string, p: number, tls: boolean) => {
+      const out = (tls ? httpsRequest : httpRequest)({
+        host: address, port: p, method: req.method, path, agent: false, headers: { ...passed(req), host: to },
+        ...tls ? { ca: upstreamCAs(), ...(isIP(host) ? {} : { servername: host }) } : {},
+      }, (up) => {
+        res.writeHead(up.statusCode ?? 502, up.headers);
+        up.pipe(res);
+        up.on("error", () => res.destroy());
+      });
+      out.on("error", () => { if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" }).end(`${to} couldn't be reached.\n`); else res.destroy(); });
+      if (kind === "upload-pack") {
+        let size = 0;
+        req.on("data", (d: Buffer) => { size += d.length; if (size > UPLOAD_PACK_LIMIT) { out.destroy(); res.destroy(); } });
+      }
+      req.pipe(out);
+    };
+    if (base) return go(hostname(base.host), Number(base.port) || (base.protocol === "https:" ? 443 : 80), base.protocol === "https:");
+    (isIP(host) ? Promise.resolve([host]) : lookup(host, { all: true, family: 4 }).then((a) => a.map((x) => x.address))).then((addresses) => {
+      // IPv4 only, as the sandbox is: an IPv6 literal (::1, ::ffff:127.0.0.1) could reach this machine's loopback.
+      if (addresses.some((a) => isIP(a) !== 4)) return refuse(req, res, 403, `${host} is an IPv6 address; with uploads off the internet is reached over IPv4 only.\n`);
+      const address = addresses.find((a) => !readOnly!.refused(a));
+      if (!address) return refuse(req, res, 403, `${host} is this machine, which the internet switch never reaches.\n`);
+      go(address, port, secure);
+    }, () => refuse(req, res, 502, `${host} doesn't resolve.\n`));
+  };
+  // Uploads off: requests that came through CONNECT to any other host, after the relay ended their TLS.
+  const web = createServer((req, res) => outbound(via.get(req.socket)!, true, req.url ?? "/", req, res));
+
   server.on("connect", (req: IncomingMessage, socket: Socket, head: Buffer) => {
     track(socket);
     const proxyAuth = String(req.headers["proxy-authorization"] ?? "");
     const decoded = /^basic\s+/i.test(proxyAuth) ? Buffer.from(proxyAuth.replace(/^basic\s+/i, ""), "base64").toString() : "";
-    if (!forge.length || !same(decoded.slice(decoded.indexOf(":") + 1), capability)) {
+    const authed = same(decoded.slice(decoded.indexOf(":") + 1), capability);
+    const to = target(req.url ?? "");
+    // Uploads off: any host but a Git host's credentialed request is read here, with or without the capability
+    // (Chromium sends none), since only this run's sandbox can reach this port.
+    if (readOnly && !(authed && ends.has(to))) {
+      socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+      if (head.length) socket.unshift(head);
+      const tls = track(new TLSSocket(socket, { isServer: true, secureContext: contextFor(hostname(to)) }));
+      via.set(tls, to);
+      return web.emit("connection", tls);
+    }
+    if (!forge.length || !authed) {
       return socket.end('HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="lyrica"\r\nContent-Length: 0\r\n\r\n');
     }
-    const to = target(req.url ?? "");
     if (ends.has(to)) {
       socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
       if (head.length) socket.unshift(head);
@@ -488,11 +613,15 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
 
   // No keep-alive across runs: close() ends every connection.
   await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  const port = (server.address() as AddressInfo).port;
+  live.add(port);
   return {
-    port: (server.address() as AddressInfo).port,
+    port,
     capability,
     ca: authority?.cert,
+    ...readOnly ? { leafKey: authority!.leafKey } : {},
     close: () => {
+      live.delete(port);
       server.close();
       server.closeAllConnections();
       for (const s of sockets) s.destroy();

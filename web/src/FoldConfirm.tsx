@@ -4,14 +4,15 @@ import { patch, type ThreadSettings, type ThreadSummary } from "./api.ts";
 import { Dialog, ErrorText, useAction } from "./ui.tsx";
 
 export interface FoldRow { thread: ThreadSummary; settings: ThreadSettings; index: number }
-const SWITCHES = ["Internet", "Services", "Cloud models"];
+const SWITCHES = ["Internet", "Uploads", "Services", "Cloud models"];
 export const foldLosses = (s: ThreadSettings, p: ThreadSettings) => [
     ...s.grants.filter(g => !p.grants.some(x => (x.path === g.path || g.path.startsWith(`${x.path.replace(/\/$/, "")}/`)) && (!g.writable || x.writable))).map(g => g.path),
     ...s.machines.filter(x => !p.machines.includes(x)),
     ...s.repositories.filter(r => !p.repositories.some(x => x.name === r.name && x.account === r.account)).map(r => r.name),
     ...s.network.hosts.filter(x => !p.network.hosts.includes(x)),
     ...(!s.localOnly && p.localOnly ? ["Cloud models"] : []),
-    ...(s.network.internet && !p.network.internet ? ["Internet"] : []), ...(s.network.services && !p.network.services ? ["Services"] : []),
+    ...(s.network.internet && !p.network.internet ? ["Internet"] : []),
+    ...(s.network.internet && p.network.internet && s.network.uploads !== false && p.network.uploads === false ? ["Uploads"] : []), ...(s.network.services && !p.network.services ? ["Services"] : []),
   ];
 /** The loss names in the Loses line's format: switches plain, the rest in mono, at most three then +n. */
 export const foldLossNames = (lost: string[]) => <>{lost.slice(0, 3).map((name, n) => <span key={name}>{n > 0 && ", "}{SWITCHES.includes(name) ? name : <span className="mono">{name}</span>}</span>)}{lost.length > 3 ? ` +${lost.length - 3}` : ""}</>;
@@ -36,6 +37,7 @@ export function FoldConfirm({ chosen, tree, settings, base, projectName, move, o
       await patch<ThreadSettings>(`${base}/settings`, {
         grants, repositories, machines: [...new Set([...p.machines, ...chosen.flatMap(c => c.settings.machines)])], hosts: [...new Set([...p.network.hosts, ...chosen.flatMap(c => c.settings.network.hosts)])],
         internet: p.network.internet || chosen.some(c => c.settings.network.internet), services: p.network.services || chosen.some(c => c.settings.network.services),
+        ...p.network.uploads === false && chosen.some(c => c.settings.network.internet && c.settings.network.uploads !== false) ? { uploads: true } : {},
       });
     }
     for (const r of chosen) await onFold(r);

@@ -1646,3 +1646,33 @@ test("a command's whole output scrolls in its row, and a named background job st
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await notice.screenshot({ path: `${process.env.SCREENSHOTS}/job-notice-open-${page.viewportSize()!.width}.png` });
 });
+
+test("Uploads: a pool's default sits under Internet, and a thread can turn it off and back to the default", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}.png` }); };
+  await page.goto(`/#/u/${userId}/settings/network`);
+  const general = page.getByRole("group", { name: "General threads" });
+  await expect(general.getByLabel("Uploads")).toBeChecked();
+  await general.getByLabel("Uploads").click();
+  await expect(general.getByLabel("Uploads")).not.toBeChecked();
+  // With internet off, there is nothing to send, so the switch rests.
+  await expect(page.getByRole("group", { name: "Private threads" }).getByLabel("Uploads")).toBeDisabled();
+  await noHorizontalScroll(page);
+  await shot("uploads-settings");
+  await page.reload();
+  await expect(general.getByLabel("Uploads")).not.toBeChecked();
+
+  await newThread(page, "General");
+  await send(page, "Hello");
+  await expect(page.getByText("You said: Hello")).toBeVisible();
+  const settings = await openSettings(page);
+  const uploads = settings.getByLabel("Uploads");
+  await expect(uploads).not.toBeChecked();
+  await uploads.click();
+  await expect(uploads).toBeChecked();
+  await noHorizontalScroll(page);
+  await uploads.scrollIntoViewIfNeeded();
+  await shot("uploads-thread");
+  await settings.locator(".net-switch", { has: page.getByLabel("Uploads") }).getByRole("button", { name: "Use default" }).click();
+  await expect(uploads).not.toBeChecked();
+});

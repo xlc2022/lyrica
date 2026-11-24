@@ -1,12 +1,13 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, constants, existsSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { isIP } from "node:net";
 import { join, posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { capOutput, maskSecrets, secretMasker, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
 import { randomBytes } from "node:crypto";
-import { openRelay, type ClaudeCodeUsage, type Relay } from "./relay.ts";
-import { hostAddresses, nftRules, pastaArgs, reachesHost, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
+import { openRelay, relayPorts, type ClaudeCodeUsage, type Relay } from "./relay.ts";
+import { hostAddresses, nftRules, parseHost, pastaArgs, reachesHost, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
 import { cleanPath, repositoryUrl, within, type GitAccountConfig, type Grant, type Network } from "./settings.ts";
 import { libraryDirs, LIBS } from "./page.ts";
 import { NIX_CONFIG, nixTools, registration, REGISTERED, SEED, type NixTools } from "./nix.ts";
@@ -140,6 +141,36 @@ function caBundle(): string | undefined {
     return tools() && !real.startsWith("/nix/store/") ? undefined : real;
   } catch { return undefined; }
 }
+/** The system's authorities as text, for a run with uploads off to trust beside its relay's; empty if they can't be read. */
+function systemCAs(): string {
+  try { const text = readFileSync(realpathSync(CA_BUNDLE), "utf8"); return text.endsWith("\n") ? text : `${text}\n`; } catch { return ""; }
+}
+
+/** Whether a network has internet with uploads off (settings.ts Network.uploads): reached only through the relay, to read. */
+export const uploadsOff = (net: Network): boolean => net.internet && net.uploads === false;
+
+/** Whether an IPv4 address is `range`: an address, or a CIDR range. */
+function inRange(address: string, range: string): boolean {
+  const [base = "", bits] = range.split("/");
+  if (bits === undefined) return address === base;
+  const n = (ip: string) => ip.split(".").reduce((a, o) => (a << 8) + Number(o), 0) >>> 0;
+  const mask = Number(bits) === 0 ? 0 : (~0 << (32 - Number(bits))) >>> 0;
+  return isIP(address) === 4 && isIP(base) === 4 && (n(address) & mask) === (n(base) & mask);
+}
+
+/** The environment that sends a run with uploads off through its relay. */
+export function readOnlyEnv(relay: Pick<Relay, "port" | "capability" | "leafKey">, hosts: string[]): Record<string, string> {
+  const proxy = `http://lyrica:${relay.capability}@127.0.0.1:${relay.port}`;
+  const direct = ["localhost", "127.0.0.1", "::1", ...hosts.flatMap((h) => { try { return [parseHost(h).host]; } catch { return []; } })].join(",");
+  const bundle = `${CERTS}/bundle.pem`;
+  return {
+    HTTPS_PROXY: proxy, HTTP_PROXY: proxy, https_proxy: proxy, http_proxy: proxy, NO_PROXY: direct, no_proxy: direct,
+    SSL_CERT_FILE: bundle, CURL_CA_BUNDLE: bundle, REQUESTS_CA_BUNDLE: bundle, PIP_CERT: bundle, GIT_SSL_CAINFO: bundle, NIX_SSL_CERT_FILE: bundle,
+    NODE_EXTRA_CA_CERTS: `${CERTS}/run.pem`, NODE_USE_ENV_PROXY: "1",
+    LYRICA_PROXY: `http://127.0.0.1:${relay.port}`, ...relay.leafKey ? { LYRICA_PROXY_KEY: relay.leafKey } : {},
+  };
+}
+
 const BROWSERS = ["chromium", "chromium-headless-shell", "chromium-browser"];
 // Programs her prompt names when present, by the name it uses.
 const LISTED: [string[], string][] = [[["git"], "git"], [["curl"], "curl"], [["jq"], "jq"], [["rg"], "ripgrep"], [["node"], "Node"], [["npm"], "npm"], [["python3"], "Python 3"], [["magick", "convert"], "ImageMagick"], [["ffmpeg"], "ffmpeg"], [["ffprobe"], "ffprobe"]];
@@ -469,12 +500,14 @@ export class Sandbox implements ExecutionTarget {
     if (this.spec.nix && !this.spec.nix.seeding) await this.seedNix(this.spec.nix);
     let forward = this.spec.forward ?? [];
     const c = this.spec.credentials;
-    const relay = c && (c.forge.length || c.anthropic) ? await openRelay({
-      anthropic: c.anthropic,
-      forge: c.forge.map((r, i) => ({ repo: r.name, kind: r.account.kind, host: r.account.host, token: r.account.token, placeholder: this.placeholders[i]!, ...(r.readOnly ? { readOnly: true } : {}) })),
+    const readOnly = uploadsOff(this.spec.network);
+    const relay = (c && (c.forge.length || c.anthropic)) || readOnly ? await openRelay({
+      anthropic: c?.anthropic,
+      forge: (c?.forge ?? []).map((r, i) => ({ repo: r.name, kind: r.account.kind, host: r.account.host, token: r.account.token, placeholder: this.placeholders[i]!, ...(r.readOnly ? { readOnly: true } : {}) })),
       reaches: (host) => reachesHost(this.spec.network, host),
       internet: this.spec.network.internet,
-      upstreams: c.upstreams,
+      upstreams: c?.upstreams,
+      ...readOnly ? { readOnlyInternet: { refused: await this.ownAddresses() } } : {},
       onPullCreate: this.spec.onPullCreate,
       onUsage: this.spec.onUsage,
       onLimit: this.spec.onLimit,
@@ -512,9 +545,21 @@ export class Sandbox implements ExecutionTarget {
     try { await p; } catch (err) { this.spec.warn?.(`Nix's store in ${nix.dir} couldn't be set up: ${(err as Error).message}`); }
   }
 
+  /** With uploads off, what the relay never goes to for the run: this machine's own addresses and its front door's, as the firewall shuts them. */
+  private async ownAddresses(): Promise<(address: string) => boolean> {
+    const own = [...this.spec.self ?? hostAddresses(), ...(await resolveAddresses(this.spec.frontHosts ?? [])).addresses];
+    return (address) => /^(127\.|0\.)/.test(address) || own.some((o) => inRange(address, o));
+  }
+
   private async launch(argv: string[], cwd: string | undefined, forward: number[], relay: Relay | undefined, extra: Record<string, string>): Promise<Sandboxed> {
-    let { internet, services, hosts } = this.spec.network;
+    let { internet } = this.spec.network;
+    const { services, hosts } = this.spec.network;
+    // Uploads off: no way out of its own but the relay, which only reads.
+    const readOnly = uploadsOff(this.spec.network) && !!relay;
+    if (readOnly) internet = false;
     if (relay) forward = [...forward, relay.port];
+    // Another run's relay is never reachable from here, even with local services on: it would be that run's way out.
+    const exclude = [...this.spec.exclude ?? [], ...relayPorts().filter((p) => p !== relay?.port)];
     // The front door's names, resolved now or before. One that has never resolved on this machine is said once, and the run
     // keeps its network: the front ports are shut on this machine's own addresses and the listed proxies whatever the name says.
     const front = internet || services || hosts.length || forward.length ? await resolveAddresses(this.spec.frontHosts ?? []) : { addresses: [], unresolved: [] };
@@ -537,10 +582,15 @@ export class Sandbox implements ExecutionTarget {
       ...forge && c!.identity ? gitIdentityEnv(c!.identity) : {},
       ...claude ? { CLAUDE_CODE_OAUTH_TOKEN: relay!.capability, ANTHROPIC_BASE_URL: `http://127.0.0.1:${relay!.port}` } : {},
     };
+    // Uploads off: every tool that reads proxy variables goes through the relay and trusts its authority beside the
+    // system's; allowed hosts and loopback go direct. Chromium is told the proxy and the certificates' key (chromium-agent.cjs).
+    const proxyEnv = readOnly ? readOnlyEnv(relay!, hosts) : {};
     const data: (readonly [string, string, string?])[] = [
       ["/etc/hosts", ["127.0.0.1 localhost", "::1 localhost", ...resolved.pinned].join("\n") + "\n"],
       ["/etc/resolv.conf", internet ? `nameserver ${SANDBOX_GATEWAY}\n` : ""],
-      ...forge ? [[`${FORGE_BIN}/gh`, FORGE, "0555"], [`${FORGE_BIN}/tea`, FORGE, "0555"], [`${CERTS}/run.pem`, relay!.ca!]] as const : [],
+      ...forge ? [[`${FORGE_BIN}/gh`, FORGE, "0555"], [`${FORGE_BIN}/tea`, FORGE, "0555"]] as const : [],
+      ...forge || readOnly ? [[`${CERTS}/run.pem`, relay!.ca!]] as const : [],
+      ...readOnly ? [[`${CERTS}/bundle.pem`, `${systemCAs()}${relay!.ca!}`]] as const : [],
       ...claude ? [[`${FORGE_BIN}/claude`, CLAUDE, "0555"]] as const : [],
     ];
     const fds: number[] = [];
@@ -565,14 +615,14 @@ export class Sandbox implements ExecutionTarget {
     const nix = this.spec.nix;
     const path = `${forge || claude ? `${FORGE_BIN}:` : ""}${env().PATH}${nix?.tools.bin ? `:${nix.tools.bin}` : ""}`;
     const ca = caBundle();
-    const own = { ...runEnv, ...env(), LYRICA_SANDBOX: "1", PATH: path, ...nix ? { NIX_CONFIG, ...ca ? { NIX_SSL_CERT_FILE: ca } : {} } : {} };
+    const own = { ...runEnv, ...env(), LYRICA_SANDBOX: "1", PATH: path, ...nix ? { NIX_CONFIG, ...ca ? { NIX_SSL_CERT_FILE: ca } : {} } : {}, ...proxyEnv };
     const setenv = Object.entries(extra).filter(([k]) => !(k in own)).map(([k, v]) => `--setenv\0${k}\0${v}\0`).join("");
     const envFd = setenv ? 3 + fds.length + data.length : undefined;
     if (envFd !== undefined) args.push("--args", String(envFd));
     const ready = 3 + fds.length + data.length + (envFd === undefined ? 0 : 1);
     let cmd = [this.spec.bwrap ?? "bwrap", ...args, "--", ...argv];
     if (networked) {
-      const rules = nftRules(internet, resolved.rules, this.spec.exclude ?? [], {
+      const rules = nftRules(internet, resolved.rules, exclude, {
         addresses: this.spec.self ?? hostAddresses(), services, front: this.spec.front ?? [],
         frontAddresses: front.addresses,
       });
@@ -604,7 +654,7 @@ export class Sandbox implements ExecutionTarget {
       await signalled(child, child.stdio[ready] as Readable);
       // The front ports are never forwarded from loopback either, in case the proxy listens on every address.
       const pastaPid = await startPasta([this.spec.pasta ?? "pasta", ...pastaArgs({ internet, services, hosts: hosts.length > 0, forward },
-        [...(this.spec.exclude ?? []), ...(this.spec.front ?? [])]), String(child.pid)]);
+        [...exclude, ...(this.spec.front ?? [])]), String(child.pid)]);
       // pasta also quits by itself within a second of the namespace going.
       if (Number.isInteger(pastaPid) && pastaPid > 1) child.on("exit", () => { try { process.kill(pastaPid, "SIGTERM"); } catch { /* already gone */ } });
     } catch (err) {
