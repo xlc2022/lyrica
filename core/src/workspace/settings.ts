@@ -691,6 +691,8 @@ export class WorkspaceSettings {
       if (m.pool !== pool) throw new Error(`${name} is a ${m.pool} MCP server; a ${pool} thread can't use it`);
     }
     if (next.parent) this.checkNarrower(next.parent, pool, next);
+    // Page reader is on wherever an ancestor's is (network), so turning it off there would do nothing: say so.
+    if (change.pageReader === false && next.parent && this.network(next.parent, pool).pageReader) throw new Error("the parent thread has Page reader on");
     this.write(threadId, next);
     this.carryAccounts(threadId, before, next.repositories);
     this.followParent(threadId, before, next.repositories);
@@ -870,7 +872,6 @@ export class WorkspaceSettings {
     const theirs = this.network(parentThreadId, pool);
     if (mine.internet && !theirs.internet) throw new Error("the parent thread has no internet");
     if (mine.internet && mine.uploads !== false && theirs.uploads === false) throw new Error("the parent thread has uploads off");
-    if (!mine.pageReader && theirs.pageReader) throw new Error("the parent thread has Page reader on");
     if (mine.services && !theirs.services) throw new Error("the parent thread can't reach local services");
     const extra = mine.hosts.find((h) => !theirs.hosts.includes(h));
     if (extra) throw new Error(`${extra} isn't in the parent thread's hosts`);
@@ -909,7 +910,14 @@ export class WorkspaceSettings {
 
   /** What this thread's tools may reach. */
   network(threadId: string, pool: Pool): Network {
-    return this.resolve(this.thread(threadId), pool);
+    const t = this.thread(threadId);
+    const net = this.resolve(t, pool);
+    // Page reader holds for a whole family: on in any ancestor, as it is now, is on here, so a parent (or the default it
+    // follows) turned on later covers the threads it already has.
+    for (let p = t.parent, seen = new Set<string>(); !net.pageReader && p && !seen.has(p); seen.add(p), p = this.thread(p).parent) {
+      if (this.resolve(this.thread(p), pool).pageReader) net.pageReader = true;
+    }
+    return net;
   }
 
   /** Records what the Files panel added, removed or renamed (`paths` is then the old path and the new), for her next turn. */

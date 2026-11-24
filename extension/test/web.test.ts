@@ -105,6 +105,17 @@ describe("web tools", () => {
     expect(after).toMatch(/^\[Characters 0 to 120 of \d+\. Read on with offset 120\.\]$/);
   });
 
+  it("with Page reader on, says when the reader fails, without the page", async () => {
+    const reader = async () => { throw new Error("no model for Cheap subagents can answer now"); };
+    const { s, results } = await session({ searxng: () => null, target: () => sandbox([]), reader: () => reader }, [[fauxToolCall("web_fetch", { url: "https://example.org/", question: "What?" })]]);
+    try {
+      await s.prompt("ask it");
+    } finally {
+      s.dispose();
+    }
+    expect(results[0]).toBe("Page reader couldn't read https://example.org/: no model for Cheap subagents can answer now");
+  });
+
   it("with Page reader on, needs a question and gives her the reader's answer, marked, instead of the page", async () => {
     const asked: { page: string; question: string }[] = [];
     const reader = async (page: string, question: string) => { asked.push({ page, question }); return { text: "It remembers and sleeps.", model: "qwen3.5-4b" }; };

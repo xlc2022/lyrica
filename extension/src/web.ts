@@ -122,7 +122,12 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
         // With Page reader on she gets the reader's answer about this part of the page, still marked as outside content.
         const answer = async (from: string, part: { text: string; note?: string }) => {
           if (!reader) return text(`${outside(from, withSections(part))}${part.note ? `\n${part.note}` : ""}`);
-          const read = await reader(part.text, p.question!.trim(), from, signal);
+          let read: Awaited<ReturnType<PageReader>>;
+          try {
+            read = await reader(part.text, p.question!.trim(), from, signal);
+          } catch (err) {
+            return text(`Page reader couldn't read ${from}: ${(err as Error).message}`, true);
+          }
           return text(`${outside(`${from}, as ${read.model} read it for "${p.question!.trim()}"`, read.text)}${part.note ? `\n${part.note}` : ""}`);
         };
         let url: URL;
@@ -131,18 +136,17 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
         // The offline copy first: a page it has never needs the network.
         const kiwix = p.online ? undefined : web.kiwix?.();
         if (kiwix) {
-          try {
-            const local = await kiwixPage(kiwix, url, signal);
-            if (local && "image" in local) {
-              return { content: [{ type: "text" as const, text: `A picture from ${local.copy}: ${url.href}` }, { type: "image" as const, data: local.image.toString("base64"), mimeType: local.mimeType }], details: undefined };
-            }
-            if (local) {
-              if (local.isError) return text(local.text, true);
-              const part = cutPage(local.text, clamp(p.maxChars, 20_000, 50_000), p.offset ?? 0);
-              if (part.isError) return text(part.text, true);
-              return await answer(`${url.href} (${local.copy})`, part);
-            }
-          } catch { /* online instead */ }
+          // Only the copy's lookup falls back to going online; a page it has is answered from it, even if the reader fails.
+          const local = await kiwixPage(kiwix, url, signal).catch(() => undefined);
+          if (local && "image" in local) {
+            return { content: [{ type: "text" as const, text: `A picture from ${local.copy}: ${url.href}` }, { type: "image" as const, data: local.image.toString("base64"), mimeType: local.mimeType }], details: undefined };
+          }
+          if (local) {
+            if (local.isError) return text(local.text, true);
+            const part = cutPage(local.text, clamp(p.maxChars, 20_000, 50_000), p.offset ?? 0);
+            if (part.isError) return text(part.text, true);
+            return await answer(`${url.href} (${local.copy})`, part);
+          }
         }
         const target = web.target();
         if (!target.run) return text("web_fetch runs only in the sandbox.", true);

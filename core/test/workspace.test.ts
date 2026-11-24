@@ -153,6 +153,17 @@ describe("grants", () => {
     expect(settings.network("g1", "general").pageReader).toBe(false);
     expect(settings.inheritSettings("g2", "c1", "general")).toMatchObject({ pageReader: true });
     expect(() => settings.inheritSettings("g2", "c2", "general", { pageReader: false })).toThrow(/Page reader on/);
+    // Turned on in a parent (or the default it follows) after its children were made, it covers them, and they keep working.
+    settings.setDefaultNetwork("general", { pageReader: false });
+    settings.inheritSettings("g3", "c3", "general");
+    expect(settings.network("c3", "general").pageReader).toBe(false);
+    settings.setThread("g3", "general", { pageReader: true });
+    expect(settings.network("c3", "general").pageReader).toBe(true);
+    expect(() => settings.checkInherited("c3", "general")).not.toThrow();
+    expect(() => settings.setThread("c3", "general", { pageReader: false })).toThrow(/Page reader on/);
+    settings.setThread("g3", "general", { pageReader: null });
+    settings.setDefaultNetwork("general", { pageReader: true });
+    expect(settings.network("c3", "general").pageReader).toBe(true);
     settings.forgetThreads(["g1"]);
     expect(settings.thread("g1").pageReader).toBeNull();
   });
