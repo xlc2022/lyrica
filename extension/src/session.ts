@@ -9,6 +9,7 @@ import { modelRuntimeFor, piModelFor, prepareTurn, type GpuWait } from "./models
 import { createRepairExtension } from "./repair.ts";
 import { createLiveCallExtension, LiveCallMeter, type LiveCall } from "./live-call.ts";
 import { createTurnToolsExtension } from "./turn-tools.ts";
+import { createOutsideExtension } from "./outside.ts";
 import { recordEntries } from "./record.ts";
 import { Tones } from "./tone.ts";
 
@@ -77,7 +78,7 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
   const loader = new DefaultResourceLoader({
     cwd: o.cwd, agentDir: o.cwd, settingsManager,
     noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true, noThemes: true,
-    extensionFactories: [createTurnToolsExtension(), createRepairExtension(), ...o.extensions, ...(o.onLiveCall ? [createLiveCallExtension(new LiveCallMeter(o.onLiveCall))] : [])],
+    extensionFactories: [createTurnToolsExtension(), createRepairExtension(), ...o.extensions, ...(o.onLiveCall ? [createLiveCallExtension(new LiveCallMeter(o.onLiveCall))] : []), createOutsideExtension()],
   });
   await loader.reload();
   const { session } = await createAgentSession({

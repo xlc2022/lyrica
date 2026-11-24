@@ -1,4 +1,4 @@
-import { callArgs, FROM_PARENT, LYRICA_REACTS, ROOT_TOOL, SECRET_TOOL, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
+import { callArgs, FROM_PARENT, unmarked, LYRICA_REACTS, ROOT_TOOL, SECRET_TOOL, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
 import { type ChecksResult, CHECKS_NOTICE, type EvidenceResult, EVIDENCE_NOTICE, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, INTERRUPTED_NOTICE, TURN_TOOL_NOTICE, OPENING, PAID_FALLBACK, type PaidFallback, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, Reaction, RootStep, ThreadRef, Told } from "./api.ts";
 
@@ -97,7 +97,7 @@ interface PiEntry { type: string; message?: PiMessage; customType?: string; cont
  * its last line too, which says why it failed ("Command exited with code 1").
  */
 export function shortResult(content: unknown, tool?: string, failed = false): string {
-  const text = textOf(content as Content);
+  const text = unmarked(textOf(content as Content));
   const lines = text.split("\n");
   const [max, chars] = tool === "read" ? [READ_LINES, READ_CHARS] : [RESULT_LINES, RESULT_CHARS];
   let short = lines.slice(0, max).join("\n");
