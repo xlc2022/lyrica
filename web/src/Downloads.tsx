@@ -6,7 +6,7 @@
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { del, get, patch, post, put, u, type DownloadHistory, type GroupInfo, type GroupSuggestion, type HostStatus, type Hub, type HubTokenInfo, type ModelsPage, type TextStarter } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
-import { civitaiModel, clearFinished, companionsOf, downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, speed, speeds, type HostDownload, type HubFiles } from "./downloads.ts";
+import { civitaiModel, clearFinished, companionsOf, downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, resumeProblem, size, speed, speeds, toSend, type HostDownload, type HubFiles } from "./downloads.ts";
 import { Icon } from "./icons.tsx";
 import { canEdit, Frame, hostOf, plural, type MCtx } from "./ModelsFrame.tsx";
 import { cameFrom, go, href, type Route } from "./route.ts";
@@ -79,6 +79,12 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
   }, [active, reloadModels, reloadGroups, reloadSuggestions]);
 
   const cancel = (ep: Endpoint, d: HostDownload) => run(async () => { stopSending(ep.id, d.id); await del(u(userId, "hosts", ep.id, "downloads", d.id)); reload(); });
+  // The browser can't reopen a file by itself, so Resume… asks for it again; the host carries on from what arrived.
+  const resume = (ep: Endpoint, d: HostDownload, file: File) => run(async () => {
+    const why = resumeProblem(d, file);
+    if (why) throw new Error(why);
+    await upload(userId, ep.id, file);
+  });
   const clear = () => run(async () => {
     await clearFinished(
       (offset) => get<DownloadHistory>(`${u(userId, "models", "downloads", "history")}?limit=100&offset=${offset}`),
@@ -130,7 +136,7 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
           {active.length ? (
             <ul className="list downloads">
               {active.length > 0 && <li className="group-head eyebrow">In progress</li>}
-              {active.map(({ ep, d }) => <Item key={`${ep.id}/${d.id}`} ep={ep} d={d} busy={busy} paused={paused(ep, d)} rate={paused(ep, d) ? undefined : rates.get(`${ep.id}/${d.id}`)} onCancel={() => void cancel(ep, d)} />)}
+              {active.map(({ ep, d }) => <Item key={`${ep.id}/${d.id}`} ep={ep} d={d} busy={busy} paused={paused(ep, d)} rate={paused(ep, d) ? undefined : rates.get(`${ep.id}/${d.id}`)} onCancel={() => void cancel(ep, d)} onResume={paused(ep, d) && !d.copyFrom ? (f) => void resume(ep, d, f) : undefined} />)}
             </ul>
           ) : lists.data && !finished.length && (
             <p className="list empty">No downloads yet. Start one from a library's <b>Download model</b> button, or here.</p>
@@ -157,11 +163,15 @@ const SEP = "\u00a0· ";
 /** Why an upload is paused, and how to carry on, for its phase's tooltip. */
 const pausedTip = (ep: Endpoint, d: HostDownload) => d.copyFrom
   ? [d.copyStopped, `Copy the model to ${ep.name} again to carry on.`].filter(Boolean).join(" ")
-  : [whyStopped(ep.id, d.id), "Choose the same file under Upload to carry on."].filter(Boolean).join(" ");
+  : whyStopped(ep.id, d.id);
 
-/** One download: its file, where from and to, and its progress and speed with Cancel, or how it ended. */
-function Item({ ep, d, busy, rate, paused, onCancel, children }: { ep: Endpoint; d: HostDownload; busy: boolean; rate?: number; paused?: boolean; onCancel?: () => void; children?: React.ReactNode }) {
+/**
+ * One download: its file, where from and to, and its progress and speed with Cancel (and Resume… for a paused upload,
+ * which asks for the same file again), or how it ended.
+ */
+function Item({ ep, d, busy, rate, paused, onCancel, onResume, children }: { ep: Endpoint; d: HostDownload; busy: boolean; rate?: number; paused?: boolean; onCancel?: () => void; onResume?: (f: File) => void; children?: React.ReactNode }) {
   const w = downloadWords(d, ep.name, paused);
+  const picker = useRef<HTMLInputElement>(null);
   return (
     <li className="dl" data-download={d.id}>
       <div className="dl-top"><b>{w.label}</b><span className="meta">{w.from}</span></div>
@@ -171,7 +181,13 @@ function Item({ ep, d, busy, rate, paused, onCancel, children }: { ep: Endpoint;
         </div>
         <div className="dl-foot">
           <span className="meta"><span title={paused ? pausedTip(ep, d) : undefined}>{w.progress.phase}</span> · <Size text={w.progress.got} />{w.progress.of && <> of <Size text={w.progress.of} /></>}{rate !== undefined && <> · <Size text={speed(rate)} /></>}</span>
-          <button type="button" className="sm" aria-label={`Cancel ${w.label}`} disabled={busy} onClick={onCancel}>Cancel</button>
+          <span className="row">
+            {onResume && <>
+              <button type="button" className="sm" aria-label={`Resume ${w.label}`} title="Choose the same file to carry on." disabled={busy} onClick={() => picker.current?.click()}>Resume…</button>
+              <input ref={picker} type="file" hidden aria-label={`File to resume ${w.label}`} accept=".gguf,.safetensors" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) onResume(f); }} />
+            </>}
+            <button type="button" className="sm" aria-label={`Cancel ${w.label}`} disabled={busy} onClick={onCancel}>Cancel</button>
+          </span>
         </div>
       </> : w.ending && (
         <p className="dl-end">
@@ -337,11 +353,21 @@ export function LinkFields({ link, setLink, sha, setSha }: { link: string; setLi
   </>;
 }
 
-/** Upload: the files picked on this computer, each with its size, and whether they fit on the host. */
-export function UploadFields({ files, setFiles, free }: { files: File[]; setFiles: (f: File[]) => void; free: number }) {
+/** The host's unfinished uploads, so picking one's file again counts only what is left to send. */
+export function useUnfinishedUploads(userId: string, hostId: string | undefined, on: boolean): HostDownload[] {
+  const list = useLoad(() => on && hostId ? get<{ downloads: HostDownload[] }>(u(userId, "hosts", hostId, "downloads")) : Promise.resolve(undefined), [userId, hostId, on]);
+  return list.data?.downloads.filter((d) => d.source === "upload" && d.state === "uploading") ?? [];
+}
+
+/**
+ * Upload: the files picked on this computer, each with its size, and whether they fit on the host (a file that carries
+ * on an unfinished upload counts only what is left).
+ */
+export function UploadFields({ files, setFiles, free, unfinished }: { files: File[]; setFiles: (f: File[]) => void; free: number; unfinished?: HostDownload[] }) {
   const picker = useRef<HTMLInputElement>(null);
   const id = useId();
   const total = files.reduce((n, f) => n + f.size, 0);
+  const need = toSend(files, unfinished);
   return (
     <div className="field upload-files">
       <span id={id}>Files</span>
@@ -359,19 +385,19 @@ export function UploadFields({ files, setFiles, free }: { files: File[]; setFile
           ))}
         </ul>
       )}
-      {(files.length > 1 || total + MARGIN > free) && (
-        <p className="meta">{files.length > 1 && <><Size text={size(total)} /> in all </>}{total + MARGIN > free && <span className="pill warn">not enough space</span>}</p>
+      {(files.length > 1 || need + MARGIN > free) && (
+        <p className="meta">{files.length > 1 && <><Size text={size(total)} /> in all </>}{need + MARGIN > free && <span className="pill warn">not enough space</span>}</p>
       )}
     </div>
   );
 }
 
 /** Why the picked files can't be uploaded to a host, or "" when they can. */
-export function uploadProblem(files: File[], free: number, host: string): string {
+export function uploadProblem(files: File[], free: number, host: string, unfinished?: HostDownload[]): string {
   if (!files.length) return "Choose a file.";
   if (files.some((f) => !/\.(gguf|safetensors)$/i.test(f.name))) return "Only .gguf and .safetensors files can be uploaded.";
   if (new Set(files.map((f) => f.name)).size < files.length) return "Two files have the same name.";
-  if (files.reduce((n, f) => n + f.size, 0) + MARGIN > free) return `Not enough space on ${host}.`;
+  if (toSend(files, unfinished) + MARGIN > free) return `Not enough space on ${host}.`;
   return "";
 }
 
@@ -536,6 +562,7 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
   const host = hosts.find((h) => h.ep.id === hostId) ?? hosts[0];
   const [source, setSource] = useState<Hub | "starters" | "url" | "upload">("starters");
   const look = useLookup(userId, host?.ep.id, source === "upload" || source === "starters" ? "url" : source);
+  const unfinished = useUnfinishedUploads(userId, host?.ep.id, source === "upload");
   const starterHost = host?.ep.id;
   const starters = useLoad(() => (starterHost ? get<{ starters: TextStarter[]; outdated?: true }>(u(userId, "hosts", starterHost, "text-starters")) : Promise.resolve(undefined)), [userId, starterHost]);
   const [starter, setStarter] = useState<string>();
@@ -583,7 +610,7 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
   const download = () => {
     if (!host) return;
     if (source === "upload") {
-      const why = uploadProblem(files, host.status!.modelsFolder.free, host.ep.name);
+      const why = uploadProblem(files, host.status!.modelsFolder.free, host.ep.name, unfinished);
       setProblem(why);
       if (!why) void run(async () => { await startUploads(userId, host.ep.id, files); setFiles([]); ctx.toast(started(files.length === 1 ? files[0]!.name : `${files.length} files`, host.ep.name, true)); });
       return;
@@ -643,7 +670,7 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
             {starters.data?.outdated ? <p className="muted">Update {host.ep.name} to see its starters.</p>
               : starters.data && <TextStarters list={starters.data.starters} picked={starter} setPicked={(id) => { setStarter(id); setProblem(""); }} free={host.status!.modelsFolder.free} />}
           </>
-          : source === "upload" ? <UploadFields files={files} setFiles={(f) => { setFiles(f); setProblem(""); }} free={host.status!.modelsFolder.free} />
+          : source === "upload" ? <UploadFields files={files} setFiles={(f) => { setFiles(f); setProblem(""); }} free={host.status!.modelsFolder.free} unfinished={unfinished} />
           : source === "url" ? <LinkFields link={link} setLink={(t) => { setLink(t); setProblem(""); }} sha={sha} setSha={setSha} /> : <>
             <RepoField look={look} placeholder={source === "huggingface" ? "unsloth/Qwen3.8-27B-GGUF, or the page's link" : "Qwen/Qwen3.8-27B-GGUF, or the page's link"} />
             {found && offered && <>

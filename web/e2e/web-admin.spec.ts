@@ -753,9 +753,9 @@ test("Downloads History: the queue shows progress with Cancel and how each ended
   }
   await shot("queue");
 
-  // Cancel: the host keeps nothing, and the queue says so.
+  // Cancel: the queue says Cancelled, with no note after it.
   await running.getByRole("button", { name: "Cancel m-Q4_K_M.gguf" }).click();
-  await expect(running).toContainText("Cancelled Nothing was kept.");
+  await expect(running.locator(".dl-end")).toHaveText("Cancelled");
   await expect(page.locator(".head .cap")).toHaveText("Nothing running · 2 finished");
   await expect(page.locator("li.dl")).toHaveCount(1);
   await page.getByRole("link", { name: "Show all", exact: true }).click();
@@ -884,6 +884,9 @@ test("Upload sends a model file from this computer in pieces, and Downloads show
     const req = route.request();
     if (req.method() === "POST") {
       const { name, size } = req.postDataJSON() as { name: string; size: number };
+      // The same name and size while it waits carries that upload on, as the host does.
+      const going = downloads.find((x) => x.path === `lyrica/upload/${name}` && x.size === size && x.state === "uploading");
+      if (going) return route.fulfill(json(going));
       const d = { id: "00000000-0000-4000-8000-0000000000bb", source: "upload", repo: null, url: null, path: `lyrica/upload/${name}`, size, received: 0,
         state: "uploading", verified: null, error: null, startedAt: new Date().toISOString() };
       downloads.unshift(d);
@@ -893,7 +896,7 @@ test("Upload sends a model file from this computer in pieces, and Downloads show
     // The piece lands only after Downloads has listed the upload as still uploading: the page must read the
     // list again when this tab stops sending, not keep that answer and show Paused.
     await listed;
-    const d = downloads[0]!;
+    const d = downloads.find((x) => x.id === new URL(req.url()).pathname.split("/").pop())!;
     const bytes = req.postDataBuffer()?.length ?? 0;
     pieces.push({ offset: new URL(req.url()).searchParams.get("offset")!, bytes });
     Object.assign(d, { received: Number(d.received) + bytes, state: Number(d.received) + bytes === d.size ? "done" : "uploading", verified: false });
@@ -922,9 +925,20 @@ test("Upload sends a model file from this computer in pieces, and Downloads show
   await expect(mine.locator(".dl-end")).toContainText("Uploaded");
   const old = page.locator("li.dl[data-download='00000000-0000-4000-8000-0000000000aa']");
   await expect(old).toContainText("Paused · 0.5 GB of 2.0 GB");
-  await expect(old.getByText("Paused", { exact: true })).toHaveAttribute("title", "Choose the same file under Upload to carry on.");
+  await expect(old.getByRole("button", { name: "Resume old-lora.safetensors" })).toHaveAttribute("title", "Choose the same file to carry on.");
+  await expect(mine.getByRole("button", { name: /^Resume/ })).toHaveCount(0);
+  if (phone(page)) expect((await old.getByRole("button", { name: "Resume old-lora.safetensors" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await noHorizontalScroll(page);
   await shot("queue");
+
+  // Resume… asks for the file again: another one is refused in words, the same one carries on from what arrived.
+  Object.assign(downloads.find((x) => String(x.id).endsWith("aa"))!, { size: 6000, received: 2000 });
+  await page.reload();
+  await old.locator("input[type=file]").setInputFiles([{ name: "other.safetensors", mimeType: "application/octet-stream", buffer: Buffer.alloc(6000) }]);
+  await expect(page.getByRole("alert").filter({ hasText: "That isn't old-lora.safetensors" })).toHaveText("That isn't old-lora.safetensors (1 MB). Choose the same file to carry on.");
+  await old.locator("input[type=file]").setInputFiles([{ name: "old-lora.safetensors", mimeType: "application/octet-stream", buffer: Buffer.alloc(6000) }]);
+  await expect.poll(() => pieces.at(-1)).toEqual({ offset: "2000", bytes: 4000 });
+  await expect(old.getByRole("button", { name: /^Resume/ })).toHaveCount(0);
 
   // The image page has Upload too, before Workflow.
   await page.goto(`/#/u/${userId}/models/images/download`);

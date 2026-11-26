@@ -76,10 +76,28 @@ export function downloadWords(d: HostDownload, host: string, paused = false): {
       ...(d.size ? { percent: Math.min(100, Math.floor((d.received / d.size) * 100)) } : {}),
     };
   }
-  if (d.state === "cancelled") return { label, from, ending: { dot: "none", word: "Cancelled", note: "Nothing was kept." } };
+  if (d.state === "cancelled") return { label, from, ending: { dot: "none", word: "Cancelled" } };
   if (d.state === "failed") return { label, from, ending: { dot: "down", word: "Failed", ...(d.error ? { note: d.error } : {}) } };
   if (d.source === "upload") return { label, from, ending: { dot: "up", word: d.copyFrom ? "Copied" : "Uploaded" } };
   return { label, from, ending: d.verified ? { dot: "up", word: "Verified" } : { dot: "away", word: "Unverified", note: "no checksum given" } };
+}
+
+/**
+ * The bytes still to send for files picked to upload: an unfinished upload on the host with a file's name and size
+ * carries on from what arrived, so only the rest counts against free space.
+ */
+export function toSend(files: { name: string; size: number }[], downloads: HostDownload[] = []): number {
+  return files.reduce((n, f) => {
+    const going = downloads.find((d) => d.source === "upload" && !d.copyFrom && d.state === "uploading" && d.path === `lyrica/upload/${f.name}` && d.size === f.size);
+    return n + f.size - (going ? Math.min(going.received, f.size) : 0);
+  }, 0);
+}
+
+/** Why a file picked to resume a paused upload isn't the one it was sending, or "" when it is. */
+export function resumeProblem(d: HostDownload, file: { name: string; size: number }): string {
+  const name = d.path.split("/").pop() || d.path;
+  if (file.name !== name || file.size !== d.size) return `That isn't ${name}${d.size ? ` (${size(d.size)})` : ""}. Choose the same file to carry on.`;
+  return "";
 }
 
 function hostname(url: string): string {

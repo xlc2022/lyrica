@@ -7,6 +7,8 @@ import { get, HttpError, post, request, u, type HostDownload } from "./api.ts";
 
 /** One request's piece. The host takes up to 64 MiB; 32 keeps a lost piece cheap on a slow link. */
 export const PIECE = 32 * 1024 * 1024;
+/** Pieces on their way at once, so the link never idles while one is passed on and written (the host waits for up to 4). */
+const IN_FLIGHT = 3;
 /** Waits before sending a piece again after the connection or the host failed, five in a row at most. */
 const RETRIES = [2_000, 5_000, 15_000, 30_000, 60_000];
 
@@ -59,24 +61,30 @@ export async function upload(userId: string, hostId: string, file: File): Promis
     let tries = 0;
     try {
       while (!stop.stopped && at < file.size) {
-        try {
-          const d = await request<HostDownload>("PUT", `${base}/${first.id}?offset=${at}`, file.slice(at, Math.min(at + PIECE, file.size)));
-          if (d.state !== "uploading") break;
-          if (d.received > at) tries = 0;
-          at = d.received;
-        } catch (e) {
-          if (stop.stopped) break;
-          if (e instanceof HttpError && e.status === 409) {
-            // Out of step with the host, or cancelled there: carry on from what it has, if it still waits.
-            const list = await get<{ downloads: HostDownload[] }>(u(userId, "hosts", hostId, "downloads"));
-            const now = list.downloads.find((x) => x.id === first.id);
-            if (now?.state !== "uploading") break;
-            at = now.received;
-            continue;
-          }
-          if (!temporary(e) || tries >= RETRIES.length) throw e;
-          await new Promise((r) => setTimeout(r, RETRIES[tries++]));
+        // Up to IN_FLIGHT pieces from where the host stands; the host writes each in its turn.
+        const starts: number[] = [];
+        for (let o = at; o < file.size && starts.length < IN_FLIGHT; o += PIECE) starts.push(o);
+        const sent = await Promise.allSettled(starts.map((o) =>
+          request<HostDownload>("PUT", `${base}/${first.id}?offset=${o}`, file.slice(o, Math.min(o + PIECE, file.size)))));
+        if (stop.stopped) break;
+        const answers = sent.flatMap((s) => s.status === "fulfilled" ? [s.value] : []);
+        if (answers.some((d) => d.state !== "uploading")) break;
+        const failed = sent.find((s): s is PromiseRejectedResult => s.status === "rejected");
+        const got = Math.max(at, ...answers.map((d) => d.received));
+        if (got > at) tries = 0;
+        at = got;
+        if (!failed) continue;
+        const e = failed.reason;
+        if (e instanceof HttpError && e.status === 409) {
+          // Out of step with the host, or cancelled there: carry on from what it has, if it still waits.
+          const list = await get<{ downloads: HostDownload[] }>(u(userId, "hosts", hostId, "downloads"));
+          const now = list.downloads.find((x) => x.id === first.id);
+          if (now?.state !== "uploading") break;
+          at = now.received;
+          continue;
         }
+        if (!temporary(e) || tries >= RETRIES.length) throw e;
+        await new Promise((r) => setTimeout(r, RETRIES[tries++]));
       }
     } catch (e) {
       stopped.set(k, (e as Error).message);

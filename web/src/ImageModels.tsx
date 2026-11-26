@@ -9,7 +9,7 @@ import { CloudImageControls } from "./CloudImageControls.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { get, post, put, u, type DeleteCopy, type GroupInfo, type HostStarter, type HubTokenInfo, type ModelsPage, type ModelUse, type OfferingInfo, type RecipeAction, type RecipeCopyPlan } from "./api.ts";
 import { fileChoices, HUB_WORD, size } from "./downloads.ts";
-import { GatedNote, HostField, LinkFields, linkName, linkProblem, managedHosts, RepoField, Size, startDownload, startUploads, started, tokenFor, UploadFields, uploadProblem, useLookup, wayBack } from "./Downloads.tsx";
+import { GatedNote, HostField, LinkFields, linkName, linkProblem, managedHosts, RepoField, Size, startDownload, startUploads, started, tokenFor, UploadFields, uploadProblem, useLookup, useUnfinishedUploads, wayBack } from "./Downloads.tsx";
 import { Icon } from "./icons.tsx";
 import {
   addableRoles, archWord, defaultsWords, deletePlan, fileName, missingOf, moreCloud, plainModels, precisionWord, recipeFiles, recipeRows, ROLE_WORD, roleWord, slotWord, starredFirst, withLora,
@@ -1090,6 +1090,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
   const [source, setSource] = useState<ImageSource>("starters");
   const hub = source === "civitai" ? "civitai" : "huggingface";
   const look = useLookup(userId, host?.ep.id, source === "huggingface" || source === "civitai" ? source : "url");
+  const unfinished = useUnfinishedUploads(userId, host?.ep.id, source === "upload");
   const starterHost = host?.ep;
   // The host's starters, and which it has made a recipe from already.
   const starters = useLoad(() => (starterHost ? Promise.all([
@@ -1130,7 +1131,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
   const download = () => {
     if (!host) return;
     if (source === "upload") {
-      const why = uploadProblem(uploads, host.status!.modelsFolder.free, host.ep.name);
+      const why = uploadProblem(uploads, host.status!.modelsFolder.free, host.ep.name, unfinished);
       setProblem(why);
       if (!why) void run(async () => { await startUploads(userId, host.ep.id, uploads); setUploads([]); ctx.toast(started(uploads.length === 1 ? uploads[0]!.name : `${uploads.length} files`, host.ep.name, true)); });
       return;
@@ -1218,7 +1219,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
             {starters.data && <Starters list={starters.data[0]} added={starters.data[1]} picked={starter} setPicked={(id) => { setStarter(id); setProblem(""); }} free={host.status!.modelsFolder.free} />}
           </>}
           {source === "workflow" && <WorkflowImport ctx={ctx} hostId={host.ep.id} onCancel={() => { location.hash = back; }} />}
-          {source === "upload" && <UploadFields files={uploads} setFiles={(f) => { setUploads(f); setProblem(""); }} free={host.status!.modelsFolder.free} />}
+          {source === "upload" && <UploadFields files={uploads} setFiles={(f) => { setUploads(f); setProblem(""); }} free={host.status!.modelsFolder.free} unfinished={unfinished} />}
           {source === "url" && <LinkFields link={link} setLink={(t) => { setLink(t); setProblem(""); }} sha={sha} setSha={setSha} />}
           {source === "scan" && <>
             <div className="row"><button type="button" disabled={busy} title={host.status!.modelsFolder.path} onClick={() => void scan()}>Scan now</button></div>

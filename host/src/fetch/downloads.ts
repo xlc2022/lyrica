@@ -31,6 +31,9 @@ export interface RecordEntry {
 export type DownloadState = "queued" | "downloading" | "uploading" | "verifying" | "done" | "failed" | "cancelled";
 
 /** States in which a download or upload still owns its path and its share of the free space. */
+/** How many pieces a browser may send ahead of what arrived, and how long one waits for those before it. */
+const AHEAD = 4;
+const PIECE_WAIT = 60_000;
 const UNFINISHED: DownloadState[] = ["queued", "downloading", "uploading", "verifying"];
 
 /** The most one upload request may carry. The browser sends 32 MiB pieces. */
@@ -417,8 +420,8 @@ export class Downloader {
     return d;
   }
 
-  /** Uploads receiving a piece now: one piece at a time each. */
-  private readonly receiving = new Set<string>();
+  /** Uploads receiving a piece now, and when it is in: one piece at a time each, the next waiting its turn. */
+  private readonly receiving = new Map<string, Promise<unknown>>();
 
   /**
    * Appends one piece of an upload, which must start where the partial file
@@ -430,14 +433,23 @@ export class Downloader {
     const d = this.get(id);
     if (!d || d.source !== "upload") throw new DownloadError("No such upload.", 404);
     if (d.state !== "uploading") throw new DownloadError("This upload isn't waiting for more.", 409);
-    if (this.receiving.has(id)) throw new DownloadError("A piece of this upload is already arriving.", 409);
+    // A browser keeps the next pieces on their way while one is written, so the link never idles: a piece waits its
+    // turn, a little while for those before it that haven't arrived yet.
     const part = partName(join(this.o.models, d.path));
-    const have = this.partSize(d);
+    let have = 0;
+    for (const until = Date.now() + PIECE_WAIT; ; ) {
+      while (this.receiving.has(id)) await this.receiving.get(id)!.catch(() => {});
+      if (d.state !== "uploading") throw new DownloadError("This upload isn't waiting for more.", 409);
+      have = this.partSize(d);
+      if (offset <= have || offset - have > AHEAD * UPLOAD_PIECE || Date.now() > until) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
     if (offset !== have) {
       d.received = have;
       throw new DownloadError(`The upload has ${have} bytes; send from there.`, 409);
     }
-    this.receiving.add(id);
+    let release!: () => void;
+    this.receiving.set(id, new Promise<void>((r) => { release = r; }));
     let got = 0;
     try {
       const count = new Transform({
@@ -451,7 +463,6 @@ export class Downloader {
       const fd = openSync(part, fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_NOFOLLOW);
       await pipeline(body, count, createWriteStream(part, { fd }));
     } finally {
-      this.receiving.delete(id);
       if (d.state === "uploading") {
         // A refused or broken piece keeps only whole bytes up to the size; the next piece starts from there.
         const now = this.partSize(d);
@@ -459,6 +470,8 @@ export class Downloader {
         d.received = Math.min(now, d.size);
         this.save();
       }
+      this.receiving.delete(id);
+      release();
     }
     if (d.state === "uploading" && d.received === d.size) void this.finishUpload(d);
     return d;

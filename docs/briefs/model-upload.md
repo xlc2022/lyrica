@@ -37,9 +37,10 @@ as a download.
   computer to <host>", phase **Uploading** with the bar, sizes and speed,
   and Cancel. The browser tab drives the upload, so the app warns before
   the tab closes while one runs. A row whose upload no tab is sending now
-  says **Paused** (its tooltip: pick the same file under Upload to carry
-  on); picking a file with the same name and size for the same host
-  carries on from what arrived. Finished: **Uploaded**, its size and Ready.
+  says **Paused** with **Resume…** beside Cancel, which asks for the file
+  again (a browser can't reopen one by itself); picking a file with the
+  same name and size for the same host, there or under Upload, carries on
+  from what arrived, and only what is left counts against free space. Finished: **Uploaded**, its size and Ready.
 - **Large files:** sent in 32 MiB pieces, each its own request, so no
   request is huge, a dropped connection costs one piece, and the browser
   retries a piece five times in a row before it stops. lyricad holds one

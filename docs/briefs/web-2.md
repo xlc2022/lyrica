@@ -378,7 +378,7 @@ and Accounts views, and the API `GET …/hosts/:id/images`, `POST
   (docs/ux.md §5), **Verified** (green dot) or **Unverified** (amber dot)
   with "no checksum given" muted after it, then <GB> · **Ready** (green
   dot) · "in the group “<g>”" or the link "Add to the group “<g>”";
-  cancelled: **Cancelled** (grey dot) with "Nothing was kept." muted; a
+  cancelled: **Cancelled** (grey dot) alone; a
   deletion: "deleted from <host>", "<GB> freed. Lists that named it skip
   it." Empty: "No downloads yet. Start one from a
   library's Download model button, or here." The list is `aria-live`
