@@ -1538,6 +1538,8 @@ and never logged; a Caddy error that quotes one has it replaced with
 
 Direct and the external proxy's HTTPS listener speak HTTP/2 with HTTP/1.1
 fallback, so multiple tabs' streams can share one connection (principle 8).
+Its receive windows are 4 MiB a stream and 16 MiB a connection, not
+HTTP/2's 64 KiB, so an upload isn't held to 64 KiB a round trip.
 Plain-HTTP listeners stay HTTP/1.1.
 
 - **Only this machine** (`off`): only `127.0.0.1` and the Unix socket. While

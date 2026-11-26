@@ -160,10 +160,10 @@ const Dot = ({ dot, word }: { dot: string; word: string }) => <span className="s
 export const Size = ({ text }: { text: string }) => { const [n, unit] = text.split(" "); return <><span className="num">{n}</span> {unit}</>; };
 const SEP = "\u00a0· ";
 
-/** Why an upload is paused, and how to carry on, for its phase's tooltip. */
-const pausedTip = (ep: Endpoint, d: HostDownload) => d.copyFrom
-  ? [d.copyStopped, `Copy the model to ${ep.name} again to carry on.`].filter(Boolean).join(" ")
-  : whyStopped(ep.id, d.id);
+/** How to carry on a paused copy, for its phase's tooltip. */
+const pausedTip = (ep: Endpoint, d: HostDownload) => d.copyFrom ? `Copy the model to ${ep.name} again to carry on.` : undefined;
+/** Why a paused upload or copy stopped, when this tab or lyricad knows, shown after its sizes. */
+const pausedWhy = (ep: Endpoint, d: HostDownload) => d.copyFrom ? d.copyStopped : whyStopped(ep.id, d.id);
 
 /**
  * One download: its file, where from and to, and its progress and speed with Cancel (and Resume… for a paused upload,
@@ -180,7 +180,7 @@ function Item({ ep, d, busy, rate, paused, onCancel, onResume, children }: { ep:
           <span className="seg-loaded" style={{ width: `${w.percent ?? 0}%` }} />
         </div>
         <div className="dl-foot">
-          <span className="meta"><span title={paused ? pausedTip(ep, d) : undefined}>{w.progress.phase}</span> · <Size text={w.progress.got} />{w.progress.of && <> of <Size text={w.progress.of} /></>}{rate !== undefined && <> · <Size text={speed(rate)} /></>}</span>
+          <span className="meta"><span title={paused ? pausedTip(ep, d) : undefined}>{w.progress.phase}</span> · <Size text={w.progress.got} />{w.progress.of && <> of <Size text={w.progress.of} /></>}{rate !== undefined && <> · <Size text={speed(rate)} /></>}{paused && pausedWhy(ep, d) && <span className="muted"> · {pausedWhy(ep, d)}</span>}</span>
           <span className="row">
             {onResume && <>
               <button type="button" className="sm" aria-label={`Resume ${w.label}`} title="Choose the same file to carry on." disabled={busy} onClick={() => picker.current?.click()}>Resume…</button>

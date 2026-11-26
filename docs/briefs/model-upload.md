@@ -37,13 +37,19 @@ as a download.
   computer to <host>", phase **Uploading** with the bar, sizes and speed,
   and Cancel. The browser tab drives the upload, so the app warns before
   the tab closes while one runs. A row whose upload no tab is sending now
-  says **Paused** with **Resume…** beside Cancel, which asks for the file
+  says **Paused**, with why it stopped when this tab knows (a piece the
+  browser couldn't read from disk says so, read before it is sent), and
+  **Resume…** beside Cancel, which asks for the file
   again (a browser can't reopen one by itself); picking a file with the
   same name and size for the same host, there or under Upload, carries on
   from what arrived, and only what is left counts against free space. Finished: **Uploaded**, its size and Ready.
 - **Large files:** sent in 32 MiB pieces, each its own request, so no
   request is huge, a dropped connection costs one piece, and the browser
-  retries a piece five times in a row before it stops. lyricad holds one
+  retries a piece five times in a row before it stops. Three are on their
+  way at once, the host writing each in its turn, so the link doesn't idle
+  while lyricad passes one on; lyricad's HTTP/2 windows (4 MiB a stream,
+  16 MiB a connection) let a browser that reaches it directly send at link
+  speed. lyricad holds one
   piece in memory per request and passes it to the host; the host passes
   it to `fetch`, which appends it to the partial file. When the last piece
   arrives, `fetch` checks the file is what its name says, hashes it, and
