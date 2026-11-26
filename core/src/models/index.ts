@@ -1265,8 +1265,9 @@ export class Models {
   async uploadPiece(actor: User, hostId: string, uploadId: string, offset: number, piece: Uint8Array): Promise<unknown> {
     const ep = this.manageable(actor, hostId);
     if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error("that isn't an upload");
-    // A piece on a slow link to the host may take a while; two minutes, as a download's look-up never does.
-    return this.hostCall(ep, "PUT", `/host/v1/uploads/${uploadId}?offset=${offset}`, piece, { "content-type": "application/octet-stream" }, 120_000);
+    // A piece on a slow link to the host may take a while, and waits behind the two before it (web/src/uploads.ts):
+    // five minutes, so three 32 MiB pieces still pass at about 0.35 MiB/s.
+    return this.hostCall(ep, "PUT", `/host/v1/uploads/${uploadId}?offset=${offset}`, piece, { "content-type": "application/octet-stream" }, 300_000);
   }
 
   /** Cancels an unfinished download (its partial file goes), or clears a finished one from the list. */

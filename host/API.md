@@ -840,9 +840,10 @@ listed with the downloads (`source: "upload"`, no `url` or `repo`).
 - `PUT /host/v1/uploads/<id>?offset=<bytes>`, body
   `application/octet-stream`: the next piece, at most 64 MiB, starting at
   `offset`, which must equal what has arrived (`in_use` otherwise). A piece
-  that comes while another of the same upload is arriving, or up to four
-  pieces ahead of what has arrived, waits its turn (a minute at most), so a
-  browser can keep several on their way. Nothing past the
+  that comes while another of the same upload is arriving, or starting up
+  to 256 MiB ahead of what has arrived, waits its turn (a minute at most
+  for those before it to arrive), so a browser can keep several on their
+  way. Nothing past the
   file's size is kept (`invalid`). A piece cut off part way keeps what
   arrived. Answers the download.
 - When the last byte arrives the upload is `verifying`: the file must be

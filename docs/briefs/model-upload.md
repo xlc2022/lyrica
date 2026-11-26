@@ -47,7 +47,9 @@ as a download.
   request is huge, a dropped connection costs one piece, and the browser
   retries a piece five times in a row before it stops. Three are on their
   way at once, the host writing each in its turn, so the link doesn't idle
-  while lyricad passes one on; lyricad's HTTP/2 windows (4 MiB a stream,
+  while lyricad passes one on (lyricad holds each in memory as it passes,
+  so up to 96 MiB an upload, and gives each five minutes to reach the
+  host); lyricad's HTTP/2 windows (4 MiB a stream,
   16 MiB a connection) let a browser that reaches it directly send at link
   speed. lyricad holds one
   piece in memory per request and passes it to the host; the host passes

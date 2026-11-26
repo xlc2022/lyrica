@@ -30,10 +30,10 @@ export interface RecordEntry {
 /** `uploading`: an upload waiting for, or receiving, its next piece; the browser sends them, nothing here fetches. */
 export type DownloadState = "queued" | "downloading" | "uploading" | "verifying" | "done" | "failed" | "cancelled";
 
-/** States in which a download or upload still owns its path and its share of the free space. */
-/** How many pieces a browser may send ahead of what arrived, and how long one waits for those before it. */
+/** How far a piece may start ahead of what arrived (in the largest pieces, 256 MiB), and how long it waits for those before it. */
 const AHEAD = 4;
 const PIECE_WAIT = 60_000;
+/** States in which a download or upload still owns its path and its share of the free space. */
 const UNFINISHED: DownloadState[] = ["queued", "downloading", "uploading", "verifying"];
 
 /** The most one upload request may carry. The browser sends 32 MiB pieces. */
