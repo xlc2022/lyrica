@@ -2,14 +2,27 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rename
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
+import { crc32, deflateSync } from "node:zlib";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { createAgentSession, DefaultResourceLoader, SessionManager, type ExtensionAPI, type ExtensionToolContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { ThreadImages, Workspace, type CallContext, type JobProgress } from "@lyrica/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeImages, mp4, png } from "../../core/test/fake-images.ts";
+import { imageSize } from "../src/look.ts";
 import { ASK_INSTEAD, createImageExtension, imageParameters, PHOTO_OF_USER, ratioSize, type ApprovalRequest, type ClipMade, type ImageTools } from "../src/index.ts";
 
 const dirs: string[] = [];
+/** A real PNG of this size, in one colour, that Pi's resizer can decode. */
+function pngOf(width: number, height: number): Buffer {
+  const chunk = (tag: string, data: Buffer) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(tag), data])));
+    return Buffer.concat([len, Buffer.from(tag), data, crc]);
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4); ihdr.set([8, 2, 0, 0, 0], 8);
+  const row = Buffer.alloc(1 + width * 3, 0x80); row[0] = 0;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(Buffer.concat(Array.from({ length: height }, () => row)))), chunk("IEND", Buffer.alloc(0))]);
+}
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const noUI = { hasUI: false } as ExtensionToolContext;
 const create = { action: "create", prompt: "A garden", tier: "quality", references: ["/photos-of-me/portrait.png"] };
@@ -445,6 +458,17 @@ describe("image tool results (principles 1 and 4)", () => {
     const updates: unknown[] = [];
     await s.tool.execute("call", { action: "create", prompt: "A garden", tier: "quality" }, undefined, (u: unknown) => updates.push(u), noUI);
     expect(updates).toEqual([{ content: [], details: { progress: { queued: false, progress: 0.5 } } }]);
+  });
+  it("shows her a large result at most 2,000 pixels wide, so a stored thread stays small, and saves every pixel", async () => {
+    const s = await setup();
+    s.context({ localOnly: true });
+    const big = pngOf(2400, 1200);
+    s.workstation.server.replyImage(big);
+    const out = await s.run({ action: "create", prompt: "A garden", tier: "quality" });
+    const path = (out.details as { image: { paths: string[] } }).image.paths[0]!;
+    expect(readFileSync(join(s.folder, "images", path.split("/").at(-1)!))).toEqual(big);
+    const shown = out.content.find(c => c.type === "image") as { data: string };
+    expect(imageSize(Buffer.from(shown.data, "base64"))).toEqual({ width: 2000, height: 1000 });
   });
   it("names the host and recipe that made the image, by the recipe's name", async () => {
     const s = await setup();

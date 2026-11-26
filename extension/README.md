@@ -79,7 +79,9 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   the thread's folders to Memory.
 - **`images.ts`**: `createImageExtension` adds the one `image` tool (create,
   edit, upscale), checks portrait consent before each routed attempt, saves
-  results through `Workspace.imageFiles` and returns Pi image content. Its
+  results through `Workspace.imageFiles` at full size and returns Pi image
+  content fitted to 2,000 x 2,000 pixels (`fitImage`), which keeps stored
+  threads small enough to load without stalling lyricad. Its
   parameters are one object with `action`, never a top-level union, which
   LM Studio refuses and small models can't read; a failed call names the
   model or recipe it reached. The
