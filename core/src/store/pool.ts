@@ -479,7 +479,6 @@ export class PoolReader {
     return row.n;
   }
 
-  /** Pi entry IDs already stored for the thread. */
   /**
    * The Pi ID of the thread's last entry after its session header, or null: a new entry's parent, read without
    * loading the thread (whose entries can hold many megabytes of images).
@@ -489,6 +488,7 @@ export class PoolReader {
     return row?.pi_id ?? null;
   }
 
+  /** Pi entry IDs already stored for the thread. */
   storedPiIds(threadId: string): Set<string> {
     return new Set((this.db.prepare("SELECT pi_id FROM entries WHERE thread = ?").all(threadId) as { pi_id: string }[]).map((r) => r.pi_id));
   }
