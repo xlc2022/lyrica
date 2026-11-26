@@ -1391,9 +1391,8 @@ export function forkConversation(store: PoolStore, from: string, to: string): vo
  * have: her next session on the thread loads it with the rest.
  */
 export function appendMessage(store: PoolStore, threadId: string, content: string, details: unknown): void {
-  const last = store.loadEntries(threadId).filter((e) => (e as { type?: string }).type !== "session").at(-1) as { id: string } | undefined;
   const entry = {
-    type: "custom_message", id: randomBytes(4).toString("hex"), parentId: last?.id ?? null, timestamp: new Date().toISOString(),
+    type: "custom_message", id: randomBytes(4).toString("hex"), parentId: store.lastPiId(threadId), timestamp: new Date().toISOString(),
     customType: DELEGATE_MESSAGE, content, display: true, details,
   } as unknown as SessionEntry;
   store.appendEntry(threadId, toStoredEntry(entry));

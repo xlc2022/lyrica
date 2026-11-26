@@ -6,6 +6,7 @@ import { Type, type Static } from "typebox";
 import { StringEnum } from "./string-enum.ts";
 import type { Approval, ApprovalRequest } from "./workspace.ts";
 import { markPhoto } from "./photos.ts";
+import { fitImage } from "./look.ts";
 
 /** `picked`: her pick among attempts made earlier, shown again last; its model is the earlier part's, so empty here. */
 export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality"; picked?: true }
@@ -346,6 +347,17 @@ function withModel(err: unknown, action: string, r: Resolution | undefined, sign
   return new Error(`${what} failed with ${r.label}${code}: ${err.message}${final}`, { cause: err });
 }
 
+/**
+ * An image as her model sees it in a tool result: within 2,000 x 2,000 pixels and 4.5 MB of base64, as look and Pi's
+ * `read` send one (fitImage, resized in a worker), while the saved file keeps every pixel. A tool result is stored
+ * with the thread and read back with every page of it on lyricad's one thread: full-size originals (an 8-megapixel
+ * PNG is about 12 MB) held every request behind each load for seconds while many were made (principle 1).
+ */
+async function shown(bytes: Uint8Array, mimeType: string, name: string) {
+  try { return { type: "image" as const, ...await fitImage(bytes, mimeType, name) }; }
+  catch { return { type: "text" as const, text: `[${name} couldn't be made small enough to show you here. Look at it if you need to see it.]` }; }
+}
+
 /** Shared by Pi and explicit refusal retries; no model-facing arguments are added. */
 export async function executeImage(o: ImageTools, id: string, p: ImageArgs, signal?: AbortSignal, ctx?: ExtensionContext, onProgress?: (p: JobProgress) => void) {
   if (!o.enabled()) throw new Error("Images are off in this thread.");
@@ -426,7 +438,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   const passed = out.resolution.passedOver ?? [];
   const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
   return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}${samplingUsed(p, out.unused)}.${unusedSaid(out.unused)}${seedsOf(out.images.map(i => i.seed))}${lorasUsed(out.loras, asks, out.resolution)}${fellBack} Saved ${paths.join(", ")}.` },
-    ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: portrait ? markPhoto({ image: part }) : { image: part } };
+    ...await Promise.all(out.images.map((i, n) => shown(i.bytes, i.type, paths[n]!)))], details: portrait ? markPhoto({ image: part }) : { image: part } };
 }
 
 /**
@@ -477,7 +489,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   }
   const { text, video, poster } = await make(signal, onProgress);
   return { content: [{ type: "text" as const, text: `${text} Its first frame:` },
-    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: portrait ? markPhoto({ video }) : { video } };
+    await shown(poster.bytes, poster.type, `${video.path}'s first frame`)], details: portrait ? markPhoto({ video }) : { video } };
 }
 
 /**
@@ -517,5 +529,5 @@ async function executeUpscaleVideo(o: ImageTools, id: string, p: ImageArgs, sign
   }
   const { text, video, poster } = await make(signal, onProgress);
   return { content: [{ type: "text" as const, text: `${text} Its first frame:` },
-    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: markPhoto({ video }) };
+    await shown(poster.bytes, poster.type, `${video.path}'s first frame`)], details: markPhoto({ video }) };
 }

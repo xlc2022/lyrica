@@ -61,7 +61,7 @@ export function appendUserMessage(store: PoolStore, threadId: string, text: stri
  * Returns its id, for a caller appending many to pass as the next one's parent instead of the thread being reloaded each time.
  */
 export function appendPiMessage(store: PoolStore, threadId: string, message: object, parentId?: string | null): string {
-  if (parentId === undefined) parentId = (store.loadEntries(threadId).filter((e) => (e as { type?: string }).type !== "session").at(-1) as { id: string } | undefined)?.id ?? null;
+  if (parentId === undefined) parentId = store.lastPiId(threadId);
   const entry = { type: "message", id: randomBytes(4).toString("hex"), parentId, timestamp: new Date().toISOString(), message } as unknown as SessionEntry;
   store.appendEntry(threadId, toStoredEntry(entry), entry.timestamp);
   return entry.id;
@@ -69,9 +69,8 @@ export function appendPiMessage(store: PoolStore, threadId: string, message: obj
 
 /** A shown notice of Lyrica's own (`customType`) at the end of a stored thread with no live session. */
 export function appendNotice(store: PoolStore, threadId: string, customType: string, text: string): void {
-  const last = store.loadEntries(threadId).filter((e) => (e as { type?: string }).type !== "session").at(-1) as { id: string } | undefined;
   const entry = {
-    type: "custom_message", id: randomBytes(4).toString("hex"), parentId: last?.id ?? null, timestamp: new Date().toISOString(),
+    type: "custom_message", id: randomBytes(4).toString("hex"), parentId: store.lastPiId(threadId), timestamp: new Date().toISOString(),
     customType, content: text, display: true,
   } as unknown as SessionEntry;
   store.appendEntry(threadId, toStoredEntry(entry), entry.timestamp);

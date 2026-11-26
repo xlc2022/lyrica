@@ -530,6 +530,17 @@ describe("threads", () => {
     expect(own.search("harbour").map((h) => h.id)).toEqual([s.entry]);
   });
 
+  it("names the last entry's Pi ID after the session header, for a new entry's parent, without loading the thread", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const thread = own.createThread({ interface: "web" });
+    own.appendEntry(thread.id, { piId: "s1", role: "session", data: { type: "session", id: "s1" }, text: "" });
+    expect(own.lastPiId(thread.id)).toBeNull();
+    own.appendEntry(thread.id, { piId: "a1", role: "user", data: { type: "message", id: "a1" }, text: "hello" });
+    own.appendEntry(thread.id, { piId: "a2", role: "toolResult", data: { type: "message", id: "a2" }, text: "image: Made" });
+    expect(own.lastPiId(thread.id)).toBe("a2");
+  });
+
   it("branches: the turns up to the chosen one, copied, with the source unchanged", async () => {
     const { memory, ada } = await setup();
     const { own } = memory.openThreadView(ada.id, "general");

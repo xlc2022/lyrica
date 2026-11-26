@@ -480,6 +480,15 @@ export class PoolReader {
   }
 
   /** Pi entry IDs already stored for the thread. */
+  /**
+   * The Pi ID of the thread's last entry after its session header, or null: a new entry's parent, read without
+   * loading the thread (whose entries can hold many megabytes of images).
+   */
+  lastPiId(threadId: string): string | null {
+    const row = this.db.prepare("SELECT pi_id FROM entries WHERE thread = ? AND role != 'session' ORDER BY n DESC LIMIT 1").get(threadId) as { pi_id: string } | undefined;
+    return row?.pi_id ?? null;
+  }
+
   storedPiIds(threadId: string): Set<string> {
     return new Set((this.db.prepare("SELECT pi_id FROM entries WHERE thread = ?").all(threadId) as { pi_id: string }[]).map((r) => r.pi_id));
   }
