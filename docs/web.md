@@ -889,11 +889,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   page's, starts each picked file's upload (`POST …/uploads`) and opens
   Downloads; `src/uploads.ts` sends the pieces (`PUT
   …/uploads/:id?offset=`, 32 MiB each) outside any page, so moving around
-  the app doesn't stop them, retries one five times after a connection or
-  host failure, re-reads where the host stands after a `409`, and asks the
+  the app doesn't stop them, three on their way at once (the next starts as
+  one lands; the host writes each in its turn), each read from the file
+  before it is sent so a read failure says so. After a failure it lets the
+  others land, then retries five times in a row after a connection or host
+  failure, re-reads where the host stands after a `409`, and asks the
   browser to warn before the tab closes while anything is being sent.
-  Downloads marks an upload this tab isn't sending as Paused and doesn't
-  poll for it alone; Cancel stops the sending first. **Accounts** (`GET|PUT|DELETE …/hub-tokens`) shows per hub
+  Downloads marks an upload this tab isn't sending as Paused, with why it
+  stopped when this tab knows, and doesn't poll for it alone; its Resume…
+  asks for the file again and, if the name and size match, calls the same
+  `upload`, which carries on from what arrived. Cancel stops the sending
+  first. **Accounts** (`GET|PUT|DELETE …/hub-tokens`) shows per hub
   the token a download uses, the user's own before a shared one, as its
   last four characters; Remove is there only where the user may remove it
   (a shared token needs an administrator).

@@ -178,6 +178,14 @@ export function wrongDoor(req: IncomingMessage, trusted: boolean, names?: string
   return LOOPBACK_NAME.test(name) ? undefined : name;
 }
 
+/**
+ * HTTP/2's receive windows: how much a browser may send before lyricad says it has read it. The protocol's 64 KiB
+ * holds an upload to 64 KiB per round trip (about 16 MiB/s over a 2 ms one, measured); 4 MiB a stream covers a
+ * 2.5 Gbit/s link at 10 ms, and 16 MiB bounds what one connection can have in flight.
+ */
+const STREAM_WINDOW = 4 * 1024 * 1024;
+const SESSION_WINDOW = 16 * 1024 * 1024;
+
 /** A listener lyricad can close, whatever protocol it speaks. */
 export type Listener = NetServer & { closeAllConnections(): void; closeIdleConnections(): void };
 
@@ -192,7 +200,7 @@ export function secureServer(tls: { key: string; cert: string }, handler: (req: 
   // Each socket's HTTP/1.1 requests still open, so an idle keep-alive socket can be closed as node:http does.
   const open = new Map<TLSSocket, number>();
   const sessions = new Set<Http2Session>();
-  const server = createSecureServer({ key: tls.key, cert: tls.cert, minVersion: "TLSv1.2", allowHTTP1: true }, (req, res) => {
+  const server = createSecureServer({ key: tls.key, cert: tls.cert, minVersion: "TLSv1.2", allowHTTP1: true, settings: { initialWindowSize: STREAM_WINDOW } }, (req, res) => {
     if (req.httpVersionMajor === 1) {
       const socket = req.socket as TLSSocket;
       open.set(socket, (open.get(socket) ?? 0) + 1);
@@ -201,7 +209,12 @@ export function secureServer(tls: { key: string; cert: string }, handler: (req: 
     handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
   });
   server.on("secureConnection", (s: TLSSocket) => { open.set(s, 0); s.once("close", () => open.delete(s)); });
-  server.on("session", (s) => { sessions.add(s); s.once("close", () => sessions.delete(s)); });
+  server.on("session", (s) => {
+    sessions.add(s);
+    s.once("close", () => sessions.delete(s));
+    // The connection's own window, past the 64 KiB HTTP/2 starts with.
+    s.setLocalWindowSize(SESSION_WINDOW);
+  });
   return Object.assign(server, {
     closeAllConnections: () => { for (const s of open.keys()) s.destroy(); },
     // HTTP/2 sessions finish their open requests and take no more.

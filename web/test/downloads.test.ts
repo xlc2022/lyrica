@@ -1,6 +1,6 @@
 // A download's words, a repository's name and the files it offers (web/src/downloads.ts), as the Downloads tab shows them.
 import { describe, expect, it } from "vitest";
-import { civitaiModel, clearFinished, companionsOf, downloadWords, fileChoices, repoName, size, speed, speeds, type HostDownload, type HubFiles } from "../src/downloads.ts";
+import { civitaiModel, clearFinished, companionsOf, downloadWords, fileChoices, repoName, resumeProblem, size, speed, speeds, toSend, type HostDownload, type HubFiles } from "../src/downloads.ts";
 
 const GB = 2 ** 30;
 const download = (d: Partial<HostDownload>): HostDownload => ({
@@ -33,9 +33,17 @@ describe("a download in words", () => {
     expect(downloadWords({ ...up, state: "done", verified: false }, "box").ending).toEqual({ dot: "up", word: "Uploaded" });
   });
 
+  it("carries on a paused upload only with its own file, counting just what is left against free space", () => {
+    const up = download({ source: "upload", repo: null, path: "lyrica/upload/mine.gguf", state: "uploading", size: 30 * GB, received: 22 * GB });
+    expect(toSend([{ name: "mine.gguf", size: 30 * GB }, { name: "new.gguf", size: 2 * GB }], [up])).toBe(10 * GB);
+    expect(toSend([{ name: "mine.gguf", size: 29 * GB }], [up])).toBe(29 * GB);
+    expect(resumeProblem(up, { name: "mine.gguf", size: 30 * GB })).toBe("");
+    expect(resumeProblem(up, { name: "other.gguf", size: 30 * GB })).toBe("That isn't mine.gguf (30.0 GB). Choose the same file to carry on.");
+  });
+
   it("says how it ended", () => {
     expect(downloadWords(download({ state: "done", verified: true }), "box").ending).toEqual({ dot: "up", word: "Verified" });
-    expect(downloadWords(download({ state: "cancelled" }), "box").ending).toEqual({ dot: "none", word: "Cancelled", note: "Nothing was kept." });
+    expect(downloadWords(download({ state: "cancelled" }), "box").ending).toEqual({ dot: "none", word: "Cancelled" });
     expect(downloadWords(download({ state: "failed", error: "Start this download again to give the token." }), "box").ending)
       .toEqual({ dot: "down", word: "Failed", note: "Start this download again to give the token." });
   });

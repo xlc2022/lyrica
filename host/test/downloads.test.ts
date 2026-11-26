@@ -181,7 +181,9 @@ describe("downloads through host-api", () => {
     expect((await s.api("/host/v1/uploads", { body: { name: "mine.gguf", size: file.length } })).body).toMatchObject({ id, received: 1000 });
     // Never past the file's size.
     expect((await piece(id, 1000, Buffer.alloc(file.length))).body.error.code).toBe("invalid");
-    expect((await piece(id, 1000, file.subarray(1000))).status).toBe(200);
+    // Pieces sent together land in order, a later one waiting for those before it.
+    const [later, sooner] = await Promise.all([piece(id, 2000, file.subarray(2000)), piece(id, 1000, file.subarray(1000, 2000))]);
+    expect([sooner.status, later.status]).toEqual([200, 200]);
     const [done] = await finished(s.api);
     expect(done).toMatchObject({ id, state: "done", verified: false, size: file.length });
 
